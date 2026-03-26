@@ -145,7 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text(
                 '2. 创建一个新应用，"Authorization Callback Domain" 填写 localhost\n'
                 '3. 创建后复制 Client ID 和 Client Secret 填入此处\n'
-                '4. 点击"授权 Strava"按钮完成授权，Access Token 和 Refresh Token 将自动填入',
+                '4. 点击"授权 Strava"按钮完成授权，Access Token、Refresh Token 和 Expires At 将自动填入',
                 style: TextStyle(fontSize: 14, height: 1.5),
               ),
             ],

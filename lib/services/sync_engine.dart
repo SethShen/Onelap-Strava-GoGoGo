@@ -41,6 +41,7 @@ class SyncEngine {
     }
 
     int deduped = 0, success = 0, failed = 0;
+    final List<String> failureReasons = [];
 
     for (final item in activities) {
       File fitFile;
@@ -52,6 +53,7 @@ class SyncEngine {
         );
       } catch (e) {
         failed++;
+        failureReasons.add('下载失败 (${item.sourceFilename}): $e');
         continue;
       }
 
@@ -87,14 +89,16 @@ class SyncEngine {
             deduped++;
           } else {
             failed++;
+            failureReasons.add('上传失败 (${item.sourceFilename}): $error');
           }
           continue;
         }
 
         await stateStore.markSynced(fingerprint, (activityId as num).toInt());
         success++;
-      } catch (_) {
+      } catch (e) {
         failed++;
+        failureReasons.add('上传失败 (${item.sourceFilename}): $e');
       }
     }
 
@@ -103,6 +107,7 @@ class SyncEngine {
       deduped: deduped,
       success: success,
       failed: failed,
+      failureReasons: failureReasons,
     );
   }
 }

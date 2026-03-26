@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/sync_summary.dart';
 import '../services/onelap_client.dart';
 import '../services/settings_service.dart';
@@ -20,9 +20,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final _settingsService = SettingsService();
 
   bool _syncing = false;
-  SyncSummary? _lastSummary;
   String? _error;
   String? _lastSyncTime;
+
+  static const _githubUrl = 'https://github.com/Tyan66666/Onelap-Strava-GoGoGo';
+  static const _xiaohongshuUrl = 'https://xhslink.com/m/2SMVhuDAzdq';
 
   @override
   void initState() {
@@ -35,11 +37,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _lastSyncTime = t);
   }
 
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法打开链接：$url')));
+      }
+    }
+  }
+
   Future<void> _sync() async {
     setState(() {
       _syncing = true;
       _error = null;
-      _lastSummary = null;
     });
 
     try {
@@ -91,10 +103,9 @@ class _HomeScreenState extends State<HomeScreen> {
             int.tryParse(settings[SettingsService.keyLookbackDays] ?? '') ?? 3,
       );
       await _loadLastSyncTime();
-      setState(() {
-        _lastSummary = summary;
-        _syncing = false;
-      });
+      setState(() => _syncing = false);
+
+      if (mounted) _showSyncResult(summary);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -103,46 +114,168 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showAbout() {
-    const repoUrl = 'https://github.com/Tyan66666/Onelap-Strava-GoGoGo';
+  void _showSyncResult(SyncSummary summary) {
+    // 风控中止
+    if (summary.abortedReason == 'risk-control') {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('同步中止'),
+          content: const Text('OneLap 风控拦截，请稍后再试'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final bool hasFailures = summary.failed > 0;
+    final bool hasSuccess = summary.success > 0;
+    final bool nothingToSync = summary.success == 0 && summary.failed == 0;
+
+    String title;
+    if (hasFailures) {
+      title = '同步完成';
+    } else if (nothingToSync) {
+      title = '没有要同步的啦🎉';
+    } else {
+      title = '成功同步 ${summary.success} 个🎉';
+    }
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('关于'),
-        content: const SingleChildScrollView(
+        title: Text(title),
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '顽鹿 Strava 同步',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              // 有失败时显示成功/失败计数
+              if (hasFailures) ...[
+                if (hasSuccess)
+                  Text(
+                    '成功：${summary.success} 个',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                Text(
+                  '失败：${summary.failed} 个',
+                  style: const TextStyle(color: Colors.red),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '失败原因：',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                ...summary.failureReasons.map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      r,
+                      style: const TextStyle(fontSize: 13, height: 1.4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              // 点赞引导
+              const Text('顺手给项目点个赞吧~'),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () => _launchUrl(_githubUrl),
+                child: const Text(
+                  'GitHub 开源地址',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
-              SizedBox(height: 8),
-              Text('开源地址：\n$repoUrl'),
-              SizedBox(height: 16),
-              Text('免责声明', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 4),
-              Text(
-                '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
-                '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
-                '本应用不收集、不存储、不上传任何用户数据。所有凭证仅保存在你的设备本地。',
-                style: TextStyle(fontSize: 13, height: 1.5),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () => _launchUrl(_xiaohongshuUrl),
+                child: const Text(
+                  '小红书主页',
+                  style: TextStyle(
+                    color: Colors.red,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
             ],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Clipboard.setData(const ClipboardData(text: repoUrl));
-              Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('链接已复制到剪贴板')));
-            },
-            child: const Text('复制链接'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showAbout() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('关于 顽爪爪同步'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '一款可以同步顽鹿 FIT 文件到 Strava 的小工具',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () => _launchUrl(_githubUrl),
+                child: const Text(
+                  'GitHub 开源地址',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    decoration: TextDecoration.underline,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('免责声明', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              const Text(
+                '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
+                '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
+                '本应用不收集、不存储、不上传任何用户数据。所有凭证仅保存在你的设备本地。',
+                style: TextStyle(fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text('如有问题或反馈，欢迎联系作者：', style: TextStyle(fontSize: 13)),
+                  InkWell(
+                    onTap: () => _launchUrl(_xiaohongshuUrl),
+                    child: const Text(
+                      '小红书主页',
+                      style: TextStyle(
+                        color: Colors.red,
+                        decoration: TextDecoration.underline,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('关闭'),
@@ -189,21 +322,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 24),
             if (_syncing) const Center(child: CircularProgressIndicator()),
-            if (_lastSummary != null) ...[
-              if (_lastSummary!.abortedReason == 'risk-control')
-                const Text(
-                  'OneLap 风控拦截，请稍后再试',
-                  style: TextStyle(color: Colors.orange),
-                )
-              else ...[
-                Text(
-                  '获取: ${_lastSummary!.fetched}   去重: ${_lastSummary!.deduped}',
-                ),
-                Text(
-                  '成功: ${_lastSummary!.success}   失败: ${_lastSummary!.failed}',
-                ),
-              ],
-            ],
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),
           ],
