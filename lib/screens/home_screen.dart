@@ -156,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('OneLap → Strava'),
+        title: const Text('顽爪爪同步'),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),

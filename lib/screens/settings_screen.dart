@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/settings_service.dart';
 import 'strava_auth_screen.dart';
 
@@ -109,20 +110,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showStravaApiInfo() {
+    const stravaApiUrl = 'https://www.strava.com/settings/api';
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('关于 Strava API 凭证'),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Strava 对个人开发者的 API 访问有严格限制，每个应用每 15 分钟最多 200 次请求、每天 2000 次。\n\n'
-            '为了不让所有用户共享同一个配额，本应用需要你使用自己的 Strava API 应用凭证。\n\n'
-            '注册步骤：\n'
-            '1. 登录 https://www.strava.com/settings/api\n'
-            '2. 创建一个新应用，"Authorization Callback Domain" 填写 localhost\n'
-            '3. 创建后复制 Client ID 和 Client Secret 填入此处\n'
-            '4. 点击"授权 Strava"按钮完成授权，Access Token 和 Refresh Token 将自动填入',
-            style: TextStyle(fontSize: 14, height: 1.5),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Strava 对个人开发者的 API 访问有严格限制，每个应用每 15 分钟最多 200 次请求、每天 2000 次。\n\n'
+                '为了不让所有用户共享同一个配额，本应用需要你使用自己的 Strava API 应用凭证。\n\n'
+                '注册步骤：',
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse(stravaApiUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text(
+                  '1. 登录 https://www.strava.com/settings/api',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: Colors.blue,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+              const Text(
+                '2. 创建一个新应用，"Authorization Callback Domain" 填写 localhost\n'
+                '3. 创建后复制 Client ID 和 Client Secret 填入此处\n'
+                '4. 点击"授权 Strava"按钮完成授权，Access Token 和 Refresh Token 将自动填入',
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ],
           ),
         ),
         actions: [
