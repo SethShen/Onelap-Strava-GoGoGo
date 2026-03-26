@@ -49,9 +49,9 @@ flutter build apk --release --dart-define=FLUTTER_IMPELLER_ENABLED=false
 
 ## 免责声明 / Disclaimer
 
-本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。本应用不收集、不存储、不上传任何用户数据，所有凭证仅保存在设备本地。
+本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。本应用不向任何第三方或作者服务器收集、传输用户数据。活动数据仅在你主动触发同步时上传至 Strava。所有凭证仅保存在设备本地。
 
-*This is a personal open-source project with no affiliation to OneLap or Strava. Use at your own risk. The author accepts no liability. No user data is collected, stored, or uploaded — all credentials are kept locally on your device.*
+*This is a personal open-source project with no affiliation to OneLap or Strava. Use at your own risk. The author accepts no liability. No user data is collected or sent to any third-party or author-controlled server. Activity data is only uploaded to Strava when you explicitly trigger a sync. All credentials are stored locally on your device.*
 
 ---
 

@@ -168,8 +168,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '失败原因：',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
+                  '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
+                  '本应用不向任何第三方或作者服务器收集、传输用户数据。'
+                  '活动数据仅在你主动触发同步时上传至 Strava。所有凭证仅保存在你的设备本地。',
+                  style: TextStyle(fontSize: 13, height: 1.5),
                 ),
                 const SizedBox(height: 4),
                 ...summary.failureReasons.map(
