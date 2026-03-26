@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/sync_summary.dart';
 import '../services/onelap_client.dart';
@@ -26,16 +27,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _githubUrl = 'https://github.com/Tyan66666/Onelap-Strava-GoGoGo';
   static const _xiaohongshuUrl = 'https://xhslink.com/m/2SMVhuDAzdq';
+  static const _prefKeyAboutShown = 'about_shown_once';
 
   @override
   void initState() {
     super.initState();
     _loadLastSyncTime();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showAboutIfFirstLaunch(),
+    );
   }
 
   Future<void> _loadLastSyncTime() async {
     final t = await _stateStore.lastSuccessSyncTime();
     if (mounted) setState(() => _lastSyncTime = t);
+  }
+
+  Future<void> _showAboutIfFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shown = prefs.getBool(_prefKeyAboutShown) ?? false;
+    if (!shown) {
+      await prefs.setBool(_prefKeyAboutShown, true);
+      if (mounted) _showAbout();
+    }
   }
 
   Future<void> _launchUrl(String url) async {
@@ -156,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 有失败时显示成功/失败计数
+              // 有失败时显示成功/失败计数及原因
               if (hasFailures) ...[
                 if (hasSuccess)
                   Text(
@@ -169,11 +183,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
-                  '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
-                  '本应用不向任何第三方或作者服务器收集、传输用户数据。'
-                  '活动数据仅在你主动触发同步时上传至 Strava。所有凭证仅保存在你的设备本地。',
-                  style: TextStyle(fontSize: 13, height: 1.5),
+                  '失败原因：',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 ...summary.failureReasons.map(
@@ -254,7 +265,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
                 '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
                 '本应用不向任何第三方或作者服务器收集、传输用户数据。'
-                '活动数据仅在你主动触发同步时上传至 Strava。所有凭证仅保存在你的设备本地。',
+                '活动数据仅在你主动触发同步时上传至 Strava。所有凭证仅保存在你的设备本地。\n\n'
+                '点击"立即同步"即视为你已阅读并同意本免责声明。',
                 style: TextStyle(fontSize: 13, height: 1.5),
               ),
             ],
