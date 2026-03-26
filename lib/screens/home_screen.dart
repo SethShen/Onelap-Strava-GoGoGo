@@ -225,57 +225,36 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('关于 顽爪爪同步'),
-        content: SingleChildScrollView(
+        content: const SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 '一款可以同步顽鹿 FIT 文件到 Strava 的小工具',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () => _launchUrl(_githubUrl),
-                child: const Text(
-                  'GitHub 开源地址',
-                  style: TextStyle(
-                    color: Colors.blue,
-                    decoration: TextDecoration.underline,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('免责声明', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              const Text(
+              SizedBox(height: 16),
+              Text('免责声明', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              Text(
                 '本应用为个人开源项目，与 OneLap 及 Strava 官方无任何关联。'
                 '使用本应用所产生的一切后果由用户自行承担，作者不承担任何责任。\n\n'
                 '本应用不收集、不存储、不上传任何用户数据。所有凭证仅保存在你的设备本地。',
                 style: TextStyle(fontSize: 13, height: 1.5),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Text('如有问题或反馈，欢迎联系作者：', style: TextStyle(fontSize: 13)),
-                  InkWell(
-                    onTap: () => _launchUrl(_xiaohongshuUrl),
-                    child: const Text(
-                      '小红书主页',
-                      style: TextStyle(
-                        color: Colors.red,
-                        decoration: TextDecoration.underline,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
         actions: [
+          TextButton(
+            onPressed: () => _launchUrl(_githubUrl),
+            child: const Text('GitHub 项目主页'),
+          ),
+          TextButton(
+            onPressed: () => _launchUrl(_xiaohongshuUrl),
+            child: const Text('作者小红书'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('关闭'),

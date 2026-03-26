@@ -55,6 +55,14 @@ flutter build apk --release --dart-define=FLUTTER_IMPELLER_ENABLED=false
 
 ---
 
+## 许可证 / License
+
+本项目基于 [GNU General Public License v3.0](LICENSE) 开源。
+
+*This project is licensed under the [GNU General Public License v3.0](LICENSE).*
+
+---
+
 ## 联系作者 / Contact
 
 - GitHub: https://github.com/Tyan66666/Onelap-Strava-GoGoGo
