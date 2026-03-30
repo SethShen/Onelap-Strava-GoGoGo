@@ -4,6 +4,10 @@ class OneLapActivity {
   final String fitUrl;
   final String recordKey;
   final String sourceFilename;
+  final String? rawFitUrl;
+  final String? rawFitUrlAlt;
+  final String? rawDurl;
+  final String? rawFileKey;
 
   const OneLapActivity({
     required this.activityId,
@@ -11,5 +15,9 @@ class OneLapActivity {
     required this.fitUrl,
     required this.recordKey,
     required this.sourceFilename,
+    this.rawFitUrl,
+    this.rawFitUrlAlt,
+    this.rawDurl,
+    this.rawFileKey,
   });
 }
