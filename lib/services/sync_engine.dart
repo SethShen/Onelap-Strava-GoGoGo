@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/onelap_activity.dart';
 import '../models/sync_summary.dart';
@@ -51,6 +52,18 @@ class SyncEngine {
           item.sourceFilename,
           downloadDir,
         );
+      } on DioException catch (e) {
+        failed++;
+        final requestUrl = e.requestOptions.uri.toString();
+        final statusCode = e.response?.statusCode;
+        final message = e.message?.trim() ?? '';
+        final details = <String>[
+          if (statusCode != null) 'HTTP $statusCode',
+          'URL: $requestUrl',
+          if (message.isNotEmpty) message,
+        ].join(' | ');
+        failureReasons.add('下载失败 (${item.sourceFilename}): $details');
+        continue;
       } catch (e) {
         failed++;
         failureReasons.add('下载失败 (${item.sourceFilename}): $e');

@@ -17,20 +17,28 @@ class OneLapClient {
   final String baseUrl;
   final String username;
   final String password;
+  final List<String> geoFallbackBaseUrls;
   late final Dio _dio;
 
   OneLapClient({
     required this.baseUrl,
     required this.username,
     required this.password,
+    this.geoFallbackBaseUrls = const <String>[
+      'https://u.onelap.cn',
+      'https://www.onelap.cn',
+    ],
+    Dio? dio,
   }) {
     final cookieJar = CookieJar();
-    _dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-      ),
-    );
+    _dio =
+        dio ??
+        Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(seconds: 30),
+          ),
+        );
     _dio.interceptors.add(CookieManager(cookieJar));
   }
 
@@ -193,10 +201,7 @@ class OneLapClient {
     String sourceFilename,
     Directory outputDir,
   ) async {
-    final downloadUrl =
-        (fitUrl.startsWith('http://') || fitUrl.startsWith('https://'))
-        ? fitUrl
-        : '$baseUrl/${fitUrl.replaceFirst(RegExp(r'^/'), '')}';
+    final List<String> downloadUrls = _buildDownloadUrls(fitUrl);
 
     final safeName = _normalizeFitFilename(sourceFilename);
     await outputDir.create(recursive: true);
@@ -207,7 +212,26 @@ class OneLapClient {
       '${outputDir.path}/.${safeName}_${DateTime.now().millisecondsSinceEpoch}.tmp',
     );
     try {
-      await _dio.download(downloadUrl, tempPath.path);
+      DioException? lastError;
+      for (var i = 0; i < downloadUrls.length; i++) {
+        final String downloadUrl = downloadUrls[i];
+        try {
+          await _dio.download(downloadUrl, tempPath.path);
+          lastError = null;
+          break;
+        } on DioException catch (e) {
+          lastError = e;
+          final int? statusCode = e.response?.statusCode;
+          final bool canFallback =
+              i < downloadUrls.length - 1 && statusCode == 404;
+          if (!canFallback) rethrow;
+          if (await tempPath.exists()) {
+            await tempPath.delete().catchError((_) => tempPath);
+          }
+        }
+      }
+
+      if (lastError != null) throw lastError;
     } catch (_) {
       await tempPath.delete().catchError((_) => tempPath);
       rethrow;
@@ -250,5 +274,36 @@ class OneLapClient {
 
     await tempPath.rename(targetPath.path);
     return targetPath;
+  }
+
+  List<String> _buildDownloadUrls(String fitUrl) {
+    final String value = fitUrl.trim();
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return <String>[value];
+    }
+
+    final Uri baseUri = Uri.parse(baseUrl);
+    final Uri relativeUri = Uri.parse(
+      value.startsWith('/') ? value : '/$value',
+    );
+    final String normalizedPath = relativeUri.path.replaceFirst(
+      RegExp(r'^/'),
+      '',
+    );
+    final List<String> urls = <String>[
+      baseUri.resolveUri(relativeUri).toString(),
+    ];
+
+    if (normalizedPath.startsWith('geo/')) {
+      for (final String fallbackBaseUrl in geoFallbackBaseUrls) {
+        final Uri fallbackBaseUri = Uri.parse(fallbackBaseUrl);
+        final Uri fallbackUri = fallbackBaseUri.resolveUri(relativeUri);
+        final String fallbackUrl = fallbackUri.toString();
+        if (!urls.contains(fallbackUrl)) {
+          urls.add(fallbackUrl);
+        }
+      }
+    }
+    return urls;
   }
 }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/sync_summary.dart';
 import '../services/onelap_client.dart';
 import '../services/settings_service.dart';
+import '../services/sync_failure_formatter.dart';
 import '../services/state_store.dart';
 import '../services/strava_client.dart';
 import '../services/sync_engine.dart';
@@ -191,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   (r) => Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      r,
+                      SyncFailureFormatter.toUserMessage(r),
                       style: const TextStyle(fontSize: 13, height: 1.4),
                     ),
                   ),
@@ -226,6 +228,23 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          if (hasFailures)
+            TextButton(
+              onPressed: () async {
+                final info = await PackageInfo.fromPlatform();
+                final detailText =
+                    SyncFailureFormatter.buildClipboardTextWithMeta(
+                      summary: summary,
+                      appVersion: '${info.version}+${info.buildNumber}',
+                    );
+                await Clipboard.setData(ClipboardData(text: detailText));
+                if (!mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('失败详细信息已复制到剪切板')));
+              },
+              child: const Text('复制失败详细信息'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('关闭'),
