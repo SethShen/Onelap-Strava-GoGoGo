@@ -24,16 +24,17 @@ class SettingsService {
   ];
 
   Future<Map<String, String>> loadSettings() async {
-    final result = <String, String>{};
-    for (final key in allKeys) {
-      result[key] = await _storage.read(key: key) ?? '';
-    }
-    return result;
+    final storedValues = await _storage.readAll();
+    return <String, String>{
+      for (final key in allKeys) key: storedValues[key] ?? '',
+    };
   }
 
   Future<void> saveSettings(Map<String, String> values) async {
-    for (final entry in values.entries) {
-      await _storage.write(key: entry.key, value: entry.value);
-    }
+    await Future.wait(
+      values.entries.map(
+        (entry) => _storage.write(key: entry.key, value: entry.value),
+      ),
+    );
   }
 }

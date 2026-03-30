@@ -43,6 +43,10 @@ class StravaClient {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (accessToken.isNotEmpty && expiresAt > now) return accessToken;
 
+    final previousAccessToken = accessToken;
+    final previousRefreshToken = refreshToken;
+    final previousExpiresAt = expiresAt;
+
     final response = await _dio.post(
       'https://www.strava.com/oauth/token',
       data: FormData.fromMap({
@@ -57,11 +61,19 @@ class StravaClient {
     refreshToken = (payload['refresh_token'] as String?) ?? refreshToken;
     expiresAt = (payload['expires_at'] as int?) ?? expiresAt;
 
-    await _settingsService.saveSettings({
-      SettingsService.keyStravaAccessToken: accessToken,
-      SettingsService.keyStravaRefreshToken: refreshToken,
-      SettingsService.keyStravaExpiresAt: '$expiresAt',
-    });
+    final tokenStateChanged =
+        accessToken != previousAccessToken ||
+        refreshToken != previousRefreshToken ||
+        expiresAt != previousExpiresAt;
+
+    if (tokenStateChanged) {
+      await _settingsService.saveSettings({
+        SettingsService.keyStravaAccessToken: accessToken,
+        SettingsService.keyStravaRefreshToken: refreshToken,
+        SettingsService.keyStravaExpiresAt: '$expiresAt',
+      });
+    }
+
     return accessToken;
   }
 
