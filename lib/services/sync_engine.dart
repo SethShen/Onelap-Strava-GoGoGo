@@ -60,6 +60,11 @@ class SyncEngine {
         final details = <String>[
           if (statusCode != null) 'HTTP $statusCode',
           'URL: $requestUrl',
+          if (item.rawDurl != null) 'raw_durl=${item.rawDurl}',
+          if (item.rawFitUrl != null) 'raw_fit_url=${item.rawFitUrl}',
+          if (item.rawFitUrlAlt != null) 'raw_fitUrl=${item.rawFitUrlAlt}',
+          if (item.rawFileKey != null) 'raw_fileKey=${item.rawFileKey}',
+          'selected_download_url=${item.fitUrl}',
           if (message.isNotEmpty) message,
         ].join(' | ');
         failureReasons.add('下载失败 (${item.sourceFilename}): $details');

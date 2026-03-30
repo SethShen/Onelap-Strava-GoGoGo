@@ -70,8 +70,14 @@ class OneLapClient {
       final map = raw as Map<String, dynamic>;
       final activityId = '${map['id'] ?? map['activity_id'] ?? ''}';
       final startTime = _parseStartTime(map);
-      final fitUrl = '${map['fit_url'] ?? map['fitUrl'] ?? map['durl'] ?? ''}'
-          .trim();
+      final rawFitUrl = '${map['fit_url'] ?? ''}'.trim();
+      final rawFitUrlAlt = '${map['fitUrl'] ?? ''}'.trim();
+      final rawDurl = '${map['durl'] ?? ''}'.trim();
+      final fitUrl = _selectDownloadUrl(
+        rawDurl: rawDurl,
+        rawFitUrl: rawFitUrl,
+        rawFitUrlAlt: rawFitUrlAlt,
+      );
       final (recordKey, sourceFilename) = _buildRecordIdentity(map);
 
       if (activityId.isEmpty || startTime.isEmpty || fitUrl.isEmpty) continue;
@@ -85,6 +91,12 @@ class OneLapClient {
           fitUrl: fitUrl,
           recordKey: recordKey,
           sourceFilename: sourceFilename,
+          rawFitUrl: rawFitUrl.isEmpty ? null : rawFitUrl,
+          rawFitUrlAlt: rawFitUrlAlt.isEmpty ? null : rawFitUrlAlt,
+          rawDurl: rawDurl.isEmpty ? null : rawDurl,
+          rawFileKey: '${map['fileKey'] ?? ''}'.trim().isEmpty
+              ? null
+              : '${map['fileKey'] ?? ''}'.trim(),
         ),
       );
       if (result.length >= limit) break;
@@ -194,6 +206,17 @@ class OneLapClient {
     if (filename.isEmpty) filename = 'activity';
     if (!filename.toLowerCase().endsWith('.fit')) filename = '$filename.fit';
     return filename;
+  }
+
+  String _selectDownloadUrl({
+    required String rawDurl,
+    required String rawFitUrl,
+    required String rawFitUrlAlt,
+  }) {
+    if (rawDurl.isNotEmpty) return rawDurl;
+    if (rawFitUrl.isNotEmpty) return rawFitUrl;
+    if (rawFitUrlAlt.isNotEmpty) return rawFitUrlAlt;
+    return '';
   }
 
   Future<File> downloadFit(
