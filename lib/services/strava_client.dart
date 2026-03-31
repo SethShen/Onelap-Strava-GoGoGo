@@ -22,14 +22,9 @@ class StravaClient {
   String refreshToken;
   String accessToken;
   int expiresAt;
+  final Dio _dio;
 
   final _settingsService = SettingsService();
-  final _dio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
-    ),
-  );
 
   StravaClient({
     required this.clientId,
@@ -37,7 +32,15 @@ class StravaClient {
     required this.refreshToken,
     required this.accessToken,
     required this.expiresAt,
-  });
+    Dio? dio,
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               connectTimeout: const Duration(seconds: 30),
+               receiveTimeout: const Duration(seconds: 30),
+             ),
+           );
 
   Future<String> ensureAccessToken() async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -78,6 +81,8 @@ class StravaClient {
   }
 
   Future<int> uploadFit(File file, {int retries = 3}) async {
+    final String dataType = _dataTypeForFile(file);
+
     for (var attempt = 1; attempt <= retries; attempt++) {
       final token = await ensureAccessToken();
       Response response;
@@ -86,7 +91,7 @@ class StravaClient {
           'https://www.strava.com/api/v3/uploads',
           options: Options(headers: {'Authorization': 'Bearer $token'}),
           data: FormData.fromMap({
-            'data_type': 'fit',
+            'data_type': dataType,
             'file': await MultipartFile.fromFile(
               file.path,
               filename: file.path.split('/').last,
@@ -119,6 +124,12 @@ class StravaClient {
       return payload['id'] as int;
     }
     throw StravaRetriableError('strava upload exhausted retries');
+  }
+
+  String _dataTypeForFile(File file) {
+    final String path = file.path.toLowerCase();
+    if (path.endsWith('.gpx')) return 'gpx';
+    return 'fit';
   }
 
   Future<Map<String, dynamic>> pollUpload(

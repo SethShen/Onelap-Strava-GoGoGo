@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:crypto/crypto.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:cookie_jar/cookie_jar.dart';
+
 import '../models/onelap_activity.dart';
 
 class OnelapRiskControlError implements Exception {
@@ -18,6 +20,7 @@ class OneLapClient {
   final String username;
   final String password;
   final List<String> geoFallbackBaseUrls;
+  final String otmBaseUrl;
   late final Dio _dio;
 
   OneLapClient({
@@ -28,6 +31,7 @@ class OneLapClient {
       'https://u.onelap.cn',
       'https://www.onelap.cn',
     ],
+    this.otmBaseUrl = 'https://otm.onelap.cn',
     Dio? dio,
   }) {
     final cookieJar = CookieJar();
@@ -43,10 +47,9 @@ class OneLapClient {
   }
 
   Future<void> login() async {
-    final pwdHash = md5.convert(utf8.encode(password)).toString();
     final response = await _dio.post(
       '$baseUrl/api/login',
-      data: FormData.fromMap({'account': username, 'password': pwdHash}),
+      data: FormData.fromMap({'account': username, 'password': _passwordHash}),
     );
     final payload = response.data as Map<String, dynamic>;
     final code = payload['code'];
@@ -56,6 +59,8 @@ class OneLapClient {
       );
     }
   }
+
+  String get _passwordHash => md5.convert(utf8.encode(password)).toString();
 
   Future<List<OneLapActivity>> listFitActivities({
     required DateTime since,
@@ -245,22 +250,31 @@ class OneLapClient {
     );
     try {
       DioException? lastError;
+      bool downloaded = false;
       for (var i = 0; i < downloadUrls.length; i++) {
         final String downloadUrl = downloadUrls[i];
         try {
           await _dio.download(downloadUrl, tempPath.path);
           lastError = null;
+          downloaded = true;
           break;
         } on DioException catch (e) {
           lastError = e;
           final int? statusCode = e.response?.statusCode;
           final bool canFallback =
-              i < downloadUrls.length - 1 && statusCode == 404;
+              statusCode == 404 &&
+              (i < downloadUrls.length - 1 || activity != null);
           if (!canFallback) rethrow;
           if (await tempPath.exists()) {
             await tempPath.delete().catchError((_) => tempPath);
           }
         }
+      }
+
+      if (!downloaded && activity != null) {
+        await _downloadViaOtmFallback(activity, tempPath);
+        downloaded = true;
+        lastError = null;
       }
 
       if (lastError != null) throw lastError;
@@ -306,6 +320,77 @@ class OneLapClient {
 
     await tempPath.rename(targetPath.path);
     return targetPath;
+  }
+
+  Future<void> _downloadViaOtmFallback(
+    OneLapActivity activity,
+    File tempPath,
+  ) async {
+    final String? filePath = _otmFitPath(activity);
+    if (filePath == null || filePath.isEmpty) {
+      throw Exception('OTM fallback requires fileKey or fitUrl path');
+    }
+
+    final String token = await _fetchOtmToken();
+    final String encodedPath = base64.encode(utf8.encode(filePath));
+    final Response<List<int>> response = await _dio.get<List<int>>(
+      '$otmBaseUrl/api/otm/ride_record/analysis/fit_content/$encodedPath',
+      options: Options(
+        headers: <String, String>{'Authorization': token},
+        responseType: ResponseType.bytes,
+      ),
+    );
+
+    final List<int> bytes = response.data ?? <int>[];
+    if (bytes.isEmpty) {
+      throw Exception('OTM fallback download returned empty body');
+    }
+    await tempPath.writeAsBytes(bytes, flush: true);
+  }
+
+  String? _otmFitPath(OneLapActivity activity) {
+    final List<String?> candidates = <String?>[
+      activity.rawFileKey,
+      activity.rawFitUrl,
+      activity.rawFitUrlAlt,
+      activity.fitUrl,
+    ];
+
+    for (final String? candidate in candidates) {
+      final String value = candidate?.trim() ?? '';
+      if (value.isEmpty) continue;
+      if (value.startsWith('geo/')) return value;
+      final Uri? uri = Uri.tryParse(value);
+      if (uri != null && uri.path.startsWith('/geo/')) {
+        return uri.path.replaceFirst(RegExp(r'^/'), '');
+      }
+    }
+    return null;
+  }
+
+  Future<String> _fetchOtmToken() async {
+    final response = await _dio.post(
+      '$baseUrl/api/login',
+      data: FormData.fromMap({'account': username, 'password': _passwordHash}),
+    );
+
+    final payload = response.data as Map<String, dynamic>;
+    final code = payload['code'];
+    if (code != 0 && code != 200) {
+      throw Exception(
+        'OneLap login failed: ${payload['msg'] ?? payload['message'] ?? payload['error'] ?? 'unknown'}',
+      );
+    }
+
+    final List<dynamic> data = payload['data'] as List<dynamic>? ?? <dynamic>[];
+    final Map<String, dynamic>? first = data.isNotEmpty
+        ? data.first as Map<String, dynamic>
+        : null;
+    final String token = '${first?['token'] ?? ''}'.trim();
+    if (token.isEmpty) {
+      throw Exception('OneLap login response missing OTM token');
+    }
+    return token;
   }
 
   List<String> _buildDownloadUrls(String fitUrl, {OneLapActivity? activity}) {

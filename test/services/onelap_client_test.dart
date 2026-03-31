@@ -343,5 +343,191 @@ void main() {
         expect(await downloaded.readAsBytes(), expectedBytes);
       },
     );
+
+    test(
+      'falls back to OTM fit content download after standard URLs fail',
+      () async {
+        final List<String> requests = <String>[];
+        final Map<String, Object> authHeadersByUrl = <String, Object>{};
+        final String otmFitPath =
+            'geo/20260331/Magene_C506_1774941676_93825_1774942570550.fit';
+        final String otmFitContentUrl =
+            'https://otm.onelap.cn/api/otm/ride_record/analysis/fit_content/'
+            'Z2VvLzIwMjYwMzMxL01hZ2VuZV9DNTA2XzE3NzQ5NDE2NzZfOTM4MjVfMTc3NDk0MjU3MDU1MC5maXQ=';
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final String url = options.uri.toString();
+          requests.add(url);
+          authHeadersByUrl[url] = options.headers['Authorization'] ?? '';
+
+          if (url == 'http://example.com/api/login') {
+            return ResponseBody.fromString(
+              jsonEncode({
+                'code': 200,
+                'data': [
+                  {
+                    'token': 'otm-token-123',
+                    'refresh_token': 'otm-refresh-456',
+                  },
+                ],
+              }),
+              200,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/json'],
+              },
+            );
+          }
+
+          if (url == 'http://fits.rfsvr.net/correct.fit?token=abc' ||
+              url == 'http://example.com/geo/20260329/wrong.fit' ||
+              url == 'http://u.onelap.cn/geo/20260329/wrong.fit' ||
+              url == 'https://u.onelap.cn/geo/20260329/wrong.fit' ||
+              url == 'https://www.onelap.cn/geo/20260329/wrong.fit') {
+            return ResponseBody.fromBytes(
+              <int>[],
+              HttpStatus.notFound,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          if (url == otmFitContentUrl) {
+            return ResponseBody.fromBytes(
+              <int>[4, 5, 6, 7],
+              HttpStatus.ok,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          return ResponseBody.fromString('not found', 404);
+        });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-otm-fallback-',
+        );
+
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
+
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
+
+        final File downloaded = await client.downloadFit(
+          'http://fits.rfsvr.net/correct.fit?token=abc',
+          'demo.fit',
+          outputDir,
+          activity: OneLapActivity(
+            activityId: '93825',
+            startTime: '2026-03-31T15:21:16',
+            fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            recordKey: 'fileKey:$otmFitPath',
+            sourceFilename: 'demo.fit',
+            rawFitUrl: 'geo/20260329/wrong.fit',
+            rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            rawFileKey: otmFitPath,
+          ),
+        );
+
+        expect(requests, contains('http://example.com/api/login'));
+        expect(requests, contains(otmFitContentUrl));
+        expect(authHeadersByUrl[otmFitContentUrl], 'otm-token-123');
+        expect(await downloaded.readAsBytes(), <int>[4, 5, 6, 7]);
+      },
+    );
+
+    test('uses absolute geo URL path for OTM fit content fallback', () async {
+      final List<String> requests = <String>[];
+      const String absoluteGeoUrl =
+          'https://u.onelap.cn/geo/20260331/'
+          'Magene_C506_1774941676_93825_1774942570550.fit';
+      const String otmFitContentUrl =
+          'https://otm.onelap.cn/api/otm/ride_record/analysis/fit_content/'
+          'Z2VvLzIwMjYwMzMxL01hZ2VuZV9DNTA2XzE3NzQ5NDE2NzZfOTM4MjVfMTc3NDk0MjU3MDU1MC5maXQ=';
+
+      final Dio dio = Dio();
+      dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+        final String url = options.uri.toString();
+        requests.add(url);
+
+        if (url == 'http://example.com/api/login') {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'code': 200,
+              'data': [
+                {'token': 'otm-token-123'},
+              ],
+            }),
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/json'],
+            },
+          );
+        }
+
+        if (url == absoluteGeoUrl) {
+          return ResponseBody.fromBytes(
+            <int>[],
+            HttpStatus.notFound,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/octet-stream'],
+            },
+          );
+        }
+
+        if (url == otmFitContentUrl) {
+          return ResponseBody.fromBytes(
+            <int>[8, 9, 10],
+            HttpStatus.ok,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/octet-stream'],
+            },
+          );
+        }
+
+        return ResponseBody.fromString('not found', 404);
+      });
+      final Directory outputDir = await Directory.systemTemp.createTemp(
+        'onelap-client-otm-absolute-fallback-',
+      );
+
+      addTearDown(() async {
+        if (await outputDir.exists()) {
+          await outputDir.delete(recursive: true);
+        }
+      });
+
+      final OneLapClient client = OneLapClient(
+        baseUrl: 'http://example.com',
+        username: 'unused',
+        password: 'unused',
+        dio: dio,
+      );
+
+      final File downloaded = await client.downloadFit(
+        absoluteGeoUrl,
+        'demo.fit',
+        outputDir,
+        activity: const OneLapActivity(
+          activityId: '93825',
+          startTime: '2026-03-31T15:21:16',
+          fitUrl: absoluteGeoUrl,
+          recordKey:
+              'fitUrl:https://u.onelap.cn/geo/20260331/Magene_C506_1774941676_93825_1774942570550.fit',
+          sourceFilename: 'demo.fit',
+        ),
+      );
+
+      expect(requests, contains(otmFitContentUrl));
+      expect(await downloaded.readAsBytes(), <int>[8, 9, 10]);
+    });
   });
 }
