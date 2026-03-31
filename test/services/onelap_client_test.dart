@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onelap_strava_sync/models/onelap_activity.dart';
 import 'package:onelap_strava_sync/services/onelap_client.dart';
 
 class _FakeHttpClientAdapter implements HttpClientAdapter {
@@ -21,6 +23,13 @@ class _FakeHttpClientAdapter implements HttpClientAdapter {
   ) {
     return handler(options);
   }
+}
+
+class _DownloadRoute {
+  _DownloadRoute({required this.statusCode, this.bytes});
+
+  final int statusCode;
+  final List<int>? bytes;
 }
 
 void main() {
@@ -82,6 +91,71 @@ void main() {
   });
 
   group('OneLapClient.downloadFit', () {
+    test('falls back from absolute durl to raw fit_url after 404', () async {
+      final List<String> requests = <String>[];
+      final Map<String, _DownloadRoute> routes = <String, _DownloadRoute>{
+        'http://fits.rfsvr.net/correct.fit?token=abc': _DownloadRoute(
+          statusCode: HttpStatus.notFound,
+        ),
+        'http://example.com/geo/20260329/wrong.fit': _DownloadRoute(
+          statusCode: HttpStatus.ok,
+          bytes: <int>[9, 8, 7],
+        ),
+      };
+      final Dio dio = Dio();
+      dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+        final String url = options.uri.toString();
+        requests.add(url);
+        final _DownloadRoute route =
+            routes[url] ?? _DownloadRoute(statusCode: HttpStatus.notFound);
+        return ResponseBody.fromBytes(
+          route.bytes ?? <int>[],
+          route.statusCode,
+          headers: <String, List<String>>{
+            Headers.contentTypeHeader: <String>['application/octet-stream'],
+          },
+        );
+      });
+      final Directory outputDir = await Directory.systemTemp.createTemp(
+        'onelap-client-fallback-',
+      );
+
+      addTearDown(() async {
+        if (await outputDir.exists()) {
+          await outputDir.delete(recursive: true);
+        }
+      });
+
+      final OneLapClient client = OneLapClient(
+        baseUrl: 'http://example.com',
+        username: 'unused',
+        password: 'unused',
+        dio: dio,
+      );
+
+      final File downloaded = await client.downloadFit(
+        'http://fits.rfsvr.net/correct.fit?token=abc',
+        'demo.fit',
+        outputDir,
+        activity: const OneLapActivity(
+          activityId: '1',
+          startTime: '2026-03-29T10:00:00',
+          fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+          recordKey: 'fileKey:demo.fit',
+          sourceFilename: 'demo.fit',
+          rawFitUrl: 'geo/20260329/wrong.fit',
+          rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+          rawFileKey: 'demo.fit',
+        ),
+      );
+
+      expect(requests, <String>[
+        'http://fits.rfsvr.net/correct.fit?token=abc',
+        'http://example.com/geo/20260329/wrong.fit',
+      ]);
+      expect(await downloaded.readAsBytes(), <int>[9, 8, 7]);
+    });
+
     test(
       'falls back to secondary geo host after primary returns 404',
       () async {

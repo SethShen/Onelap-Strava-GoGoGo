@@ -222,9 +222,13 @@ class OneLapClient {
   Future<File> downloadFit(
     String fitUrl,
     String sourceFilename,
-    Directory outputDir,
-  ) async {
-    final List<String> downloadUrls = _buildDownloadUrls(fitUrl);
+    Directory outputDir, {
+    OneLapActivity? activity,
+  }) async {
+    final List<String> downloadUrls = _buildDownloadUrls(
+      fitUrl,
+      activity: activity,
+    );
 
     final safeName = _normalizeFitFilename(sourceFilename);
     await outputDir.create(recursive: true);
@@ -299,7 +303,37 @@ class OneLapClient {
     return targetPath;
   }
 
-  List<String> _buildDownloadUrls(String fitUrl) {
+  List<String> _buildDownloadUrls(String fitUrl, {OneLapActivity? activity}) {
+    final List<String> urls = <String>[];
+
+    void addCandidates(String candidate) {
+      for (final String url in _expandDownloadUrls(candidate)) {
+        if (!urls.contains(url)) {
+          urls.add(url);
+        }
+      }
+    }
+
+    addCandidates(fitUrl);
+    if (activity != null) {
+      final String? rawFitUrl = activity.rawFitUrl;
+      if (rawFitUrl != null && rawFitUrl.trim().isNotEmpty) {
+        addCandidates(rawFitUrl);
+      }
+      final String? rawFitUrlAlt = activity.rawFitUrlAlt;
+      if (rawFitUrlAlt != null && rawFitUrlAlt.trim().isNotEmpty) {
+        addCandidates(rawFitUrlAlt);
+      }
+      final String? rawDurl = activity.rawDurl;
+      if (rawDurl != null && rawDurl.trim().isNotEmpty) {
+        addCandidates(rawDurl);
+      }
+    }
+
+    return urls;
+  }
+
+  List<String> _expandDownloadUrls(String fitUrl) {
     final String value = fitUrl.trim();
     if (value.startsWith('http://') || value.startsWith('https://')) {
       return <String>[value];

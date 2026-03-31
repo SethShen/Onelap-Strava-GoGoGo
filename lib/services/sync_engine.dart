@@ -51,6 +51,7 @@ class SyncEngine {
           item.fitUrl,
           item.sourceFilename,
           downloadDir,
+          activity: item,
         );
       } on DioException catch (e) {
         failed++;
