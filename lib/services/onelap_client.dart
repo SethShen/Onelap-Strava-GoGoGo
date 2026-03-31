@@ -73,12 +73,13 @@ class OneLapClient {
       final rawFitUrl = '${map['fit_url'] ?? ''}'.trim();
       final rawFitUrlAlt = '${map['fitUrl'] ?? ''}'.trim();
       final rawDurl = '${map['durl'] ?? ''}'.trim();
+      final (recordKey, sourceFilename) = _buildRecordIdentity(map);
       final fitUrl = _selectDownloadUrl(
         rawDurl: rawDurl,
         rawFitUrl: rawFitUrl,
         rawFitUrlAlt: rawFitUrlAlt,
+        recordKey: recordKey,
       );
-      final (recordKey, sourceFilename) = _buildRecordIdentity(map);
 
       if (activityId.isEmpty || startTime.isEmpty || fitUrl.isEmpty) continue;
       if (startTime.substring(0, 10).compareTo(cutoff) < 0) continue;
@@ -212,10 +213,14 @@ class OneLapClient {
     required String rawDurl,
     required String rawFitUrl,
     required String rawFitUrlAlt,
+    required String recordKey,
   }) {
     if (rawDurl.isNotEmpty) return rawDurl;
     if (rawFitUrl.isNotEmpty) return rawFitUrl;
     if (rawFitUrlAlt.isNotEmpty) return rawFitUrlAlt;
+    if (recordKey.startsWith('fileKey:')) {
+      return recordKey.substring('fileKey:'.length);
+    }
     return '';
   }
 
@@ -327,6 +332,10 @@ class OneLapClient {
       final String? rawDurl = activity.rawDurl;
       if (rawDurl != null && rawDurl.trim().isNotEmpty) {
         addCandidates(rawDurl);
+      }
+      final String? rawFileKey = activity.rawFileKey;
+      if (rawFileKey != null && rawFileKey.trim().isNotEmpty) {
+        addCandidates(rawFileKey);
       }
     }
 

@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/onelap_client.dart';
 import '../services/settings_service.dart';
 import 'strava_auth_screen.dart';
 
+typedef AuthorizeStravaCallback =
+    Future<bool?> Function(String clientId, String clientSecret);
+typedef ValidateOneLapLoginCallback =
+    Future<void> Function(String username, String password);
+
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.authorizeStrava,
+    this.validateOneLapLogin,
+  });
+
+  final AuthorizeStravaCallback? authorizeStrava;
+  final ValidateOneLapLoginCallback? validateOneLapLogin;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -61,6 +74,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _saveOneLapCredentials({bool validateAfterSave = false}) async {
+    final Map<String, String> values = {
+      SettingsService.keyOneLapUsername:
+          _controllers[SettingsService.keyOneLapUsername]!.text.trim(),
+      SettingsService.keyOneLapPassword:
+          _controllers[SettingsService.keyOneLapPassword]!.text.trim(),
+    };
+    if (validateAfterSave) {
+      await _validateOneLapLogin(
+        username: values[SettingsService.keyOneLapUsername]!,
+        password: values[SettingsService.keyOneLapPassword]!,
+        persistValues: values,
+        showSuccessMessage: false,
+      );
+      return;
+    }
+    await _settingsService.saveSettings(values);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('OneLap 账号已保存')));
+    }
+  }
+
+  Future<void> _validateOneLapLogin({
+    String? username,
+    String? password,
+    Map<String, String>? persistValues,
+    bool showSuccessMessage = true,
+  }) async {
+    final effectiveUsername =
+        username ??
+        _controllers[SettingsService.keyOneLapUsername]!.text.trim();
+    final effectivePassword =
+        password ??
+        _controllers[SettingsService.keyOneLapPassword]!.text.trim();
+
+    if (effectiveUsername.isEmpty || effectivePassword.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先填写 OneLap 用户名和密码')));
+      }
+      return;
+    }
+
+    try {
+      final ValidateOneLapLoginCallback validator =
+          widget.validateOneLapLogin ??
+          (String username, String password) {
+            final client = OneLapClient(
+              baseUrl: 'https://www.onelap.cn',
+              username: username,
+              password: password,
+            );
+            return client.login();
+          };
+      await validator(effectiveUsername, effectivePassword);
+      if (persistValues != null) {
+        await _settingsService.saveSettings(persistValues);
+      }
+      if (mounted && showSuccessMessage) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('OneLap 登录验证成功')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('OneLap 登录验证失败: $e')));
+      }
+    }
+  }
+
   Future<void> _authorizeStrava() async {
     final clientId = _controllers[SettingsService.keyStravaClientId]!.text
         .trim();
@@ -79,12 +167,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) =>
-            StravaAuthScreen(clientId: clientId, clientSecret: clientSecret),
-      ),
-    );
+    await _save();
+    if (!mounted) return;
+
+    final navigator = Navigator.of(context);
+
+    final result =
+        await (widget.authorizeStrava?.call(clientId, clientSecret) ??
+            navigator.push<bool>(
+              MaterialPageRoute(
+                builder: (_) => StravaAuthScreen(
+                  clientId: clientId,
+                  clientSecret: clientSecret,
+                ),
+              ),
+            ));
 
     if (!mounted) return;
 
@@ -192,6 +289,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () =>
+                      _saveOneLapCredentials(validateAfterSave: true),
+                  child: const Text('保存 OneLap 账号'),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           const Text(
             '同步设置',

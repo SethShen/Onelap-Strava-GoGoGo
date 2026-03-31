@@ -88,6 +88,56 @@ void main() {
       );
       expect(activities.single.sourceFilename, 'demo.fit');
     });
+
+    test('uses fileKey when no fit URL fields exist', () async {
+      final Dio dio = Dio();
+      dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+        if (options.uri.toString() == 'http://u.onelap.cn/analysis/list') {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'code': 200,
+              'data': [
+                {
+                  'id': 1,
+                  'start_time': '2026-03-29T10:00:00',
+                  'fileKey': 'geo/20260329/filekey.fit',
+                },
+              ],
+            }),
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/json'],
+            },
+          );
+        }
+        if (options.uri.toString() == 'http://example.com/api/login') {
+          return ResponseBody.fromString(
+            '{"code":200}',
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/json'],
+            },
+          );
+        }
+        return ResponseBody.fromString('not found', 404);
+      });
+
+      final OneLapClient client = OneLapClient(
+        baseUrl: 'http://example.com',
+        username: 'unused',
+        password: 'unused',
+        dio: dio,
+      );
+
+      final List<OneLapActivity> activities = await client.listFitActivities(
+        since: DateTime.utc(2026, 3, 28),
+      );
+
+      expect(activities, hasLength(1));
+      expect(activities.single.fitUrl, 'geo/20260329/filekey.fit');
+      expect(activities.single.rawFileKey, 'geo/20260329/filekey.fit');
+      expect(activities.single.recordKey, 'fileKey:geo/20260329/filekey.fit');
+    });
   });
 
   group('OneLapClient.downloadFit', () {
@@ -155,6 +205,86 @@ void main() {
       ]);
       expect(await downloaded.readAsBytes(), <int>[9, 8, 7]);
     });
+
+    test(
+      'falls back to raw fileKey path after durl and raw fit urls 404',
+      () async {
+        final List<String> requests = <String>[];
+        final Map<String, _DownloadRoute> routes = <String, _DownloadRoute>{
+          'http://fits.rfsvr.net/correct.fit?token=abc': _DownloadRoute(
+            statusCode: HttpStatus.notFound,
+          ),
+          'http://example.com/geo/20260329/wrong.fit': _DownloadRoute(
+            statusCode: HttpStatus.notFound,
+          ),
+          'http://u.onelap.cn/geo/20260329/wrong.fit': _DownloadRoute(
+            statusCode: HttpStatus.notFound,
+          ),
+          'https://u.onelap.cn/geo/20260329/wrong.fit': _DownloadRoute(
+            statusCode: HttpStatus.notFound,
+          ),
+          'https://www.onelap.cn/geo/20260329/wrong.fit': _DownloadRoute(
+            statusCode: HttpStatus.notFound,
+          ),
+          'http://example.com/geo/20260329/filekey.fit': _DownloadRoute(
+            statusCode: HttpStatus.ok,
+            bytes: <int>[1, 2, 3],
+          ),
+        };
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final String url = options.uri.toString();
+          requests.add(url);
+          final _DownloadRoute route =
+              routes[url] ?? _DownloadRoute(statusCode: HttpStatus.notFound);
+          return ResponseBody.fromBytes(
+            route.bytes ?? <int>[],
+            route.statusCode,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/octet-stream'],
+            },
+          );
+        });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-filekey-fallback-',
+        );
+
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
+
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
+
+        final File downloaded = await client.downloadFit(
+          'http://fits.rfsvr.net/correct.fit?token=abc',
+          'demo.fit',
+          outputDir,
+          activity: const OneLapActivity(
+            activityId: '1',
+            startTime: '2026-03-29T10:00:00',
+            fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            recordKey: 'fileKey:geo/20260329/filekey.fit',
+            sourceFilename: 'demo.fit',
+            rawFitUrl: 'geo/20260329/wrong.fit',
+            rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            rawFileKey: 'geo/20260329/filekey.fit',
+          ),
+        );
+
+        expect(
+          requests,
+          contains('http://example.com/geo/20260329/filekey.fit'),
+        );
+        expect(await downloaded.readAsBytes(), <int>[1, 2, 3]);
+      },
+    );
 
     test(
       'falls back to secondary geo host after primary returns 404',
