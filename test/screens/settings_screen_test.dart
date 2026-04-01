@@ -55,6 +55,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  bool hasFocusedEditableText(WidgetTester tester) {
+    return find
+        .byType(EditableText)
+        .evaluate()
+        .map(
+          (element) =>
+              tester.widget<EditableText>(find.byWidget(element.widget)),
+        )
+        .any((editableText) => editableText.focusNode.hasFocus);
+  }
+
   setUp(() {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
   });
@@ -274,5 +285,72 @@ void main() {
 
     final Map<String, String> settings = await SettingsService().loadSettings();
     expect(settings[SettingsService.keyLookbackDays], '5');
+  });
+
+  testWidgets('invalid lookback days shows error and does not persist', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      SettingsService.keyLookbackDays: '3',
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+    await tapVisibleText(tester, '保存同步设置');
+
+    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+
+    final Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '3');
+  });
+
+  testWidgets('successful OneLap save dismisses keyboard focus', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          validateOneLapLogin: (String username, String password) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'OneLap 用户名', 'focus-user');
+    await enterVisibleText(tester, 'OneLap 密码', 'focus-pass');
+
+    final Finder passwordField = fieldWithLabel('OneLap 密码');
+    await tester.tap(passwordField);
+    await tester.pump();
+    expect(hasFocusedEditableText(tester), isTrue);
+
+    await tapVisibleText(tester, '保存 OneLap 账号');
+
+    expect(hasFocusedEditableText(tester), isFalse);
+  });
+
+  testWidgets('saving sync settings dismisses keyboard focus', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpAndSettle();
+
+    final Finder field = fieldWithLabel('同步最近几天（默认 3）');
+    await tester.tap(field);
+    await tester.pump();
+    expect(hasFocusedEditableText(tester), isTrue);
+
+    await tester.enterText(field, '6');
+    await tapVisibleText(tester, '保存同步设置');
+
+    expect(hasFocusedEditableText(tester), isFalse);
   });
 }

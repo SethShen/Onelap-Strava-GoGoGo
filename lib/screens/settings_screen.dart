@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/onelap_client.dart';
 import '../services/settings_service.dart';
@@ -76,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveOneLapCredentials({bool validateAfterSave = false}) async {
+    _dismissKeyboard();
+
     final Map<String, String> values = {
       SettingsService.keyOneLapUsername:
           _controllers[SettingsService.keyOneLapUsername]!.text.trim(),
@@ -165,15 +168,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveSyncSettings() async {
+    _dismissKeyboard();
+
+    final String lookbackDays = _controllers[SettingsService.keyLookbackDays]!
+        .text
+        .trim();
+    final int? parsedLookbackDays = int.tryParse(lookbackDays);
+    if (parsedLookbackDays == null || parsedLookbackDays <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请输入大于 0 的整数天数')));
+      }
+      return;
+    }
+
     await _settingsService.saveSettings({
-      SettingsService.keyLookbackDays:
-          _controllers[SettingsService.keyLookbackDays]!.text.trim(),
+      SettingsService.keyLookbackDays: lookbackDays,
     });
     if (mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
     }
+  }
+
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _authorizeStrava() async {
@@ -353,6 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: TextField(
               controller: _controllers[SettingsService.keyLookbackDays],
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _saveSyncSettings(),
               decoration: InputDecoration(
