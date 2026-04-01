@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +110,8 @@ void main() {
 
     await tapVisibleText(tester, '保存 OneLap 账号');
 
+    expect(find.text('OneLap 账号已保存'), findsOneWidget);
+
     final Map<String, String> settings = await SettingsService().loadSettings();
     expect(settings[SettingsService.keyOneLapUsername], 'solo-user');
     expect(settings[SettingsService.keyOneLapPassword], 'solo-pass');
@@ -147,34 +151,128 @@ void main() {
     expect(settings[SettingsService.keyOneLapPassword], 'verify-pass');
   });
 
-  testWidgets('failed OneLap validation keeps previously saved credentials', (
+  testWidgets(
+    'save OneLap credentials shows validating state while request is in flight',
+    (WidgetTester tester) async {
+      useLargeTestViewport(tester);
+
+      final Completer<void> validationCompleter = Completer<void>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            validateOneLapLogin: (String username, String password) {
+              return validationCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await enterVisibleText(tester, 'OneLap 用户名', 'slow-user');
+      await enterVisibleText(tester, 'OneLap 密码', 'slow-pass');
+
+      await tester.tap(buttonWithText('保存 OneLap 账号'));
+      await tester.pump();
+
+      expect(find.text('验证中...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      final ElevatedButton button = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '验证中...'),
+      );
+      expect(button.onPressed, isNull);
+
+      validationCompleter.complete();
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'failed OneLap validation keeps previous credentials and restores idle state',
+    (WidgetTester tester) async {
+      useLargeTestViewport(tester);
+
+      FlutterSecureStorage.setMockInitialValues(<String, String>{
+        SettingsService.keyOneLapUsername: 'stable-user',
+        SettingsService.keyOneLapPassword: 'stable-pass',
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            validateOneLapLogin: (String username, String password) async {
+              throw Exception('invalid credentials');
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await enterVisibleText(tester, 'OneLap 用户名', 'wrong-user');
+      await enterVisibleText(tester, 'OneLap 密码', 'wrong-pass');
+
+      await tapVisibleText(tester, '保存 OneLap 账号');
+
+      expect(
+        find.text('OneLap 登录验证失败: Exception: invalid credentials'),
+        findsOneWidget,
+      );
+      expect(find.text('保存 OneLap 账号'), findsOneWidget);
+      expect(find.text('验证中...'), findsNothing);
+
+      final Map<String, String> settings = await SettingsService()
+          .loadSettings();
+      expect(settings[SettingsService.keyOneLapUsername], 'stable-user');
+      expect(settings[SettingsService.keyOneLapPassword], 'stable-pass');
+    },
+  );
+
+  testWidgets('save sync settings persists lookback days only', (
     WidgetTester tester,
   ) async {
     useLargeTestViewport(tester);
 
     FlutterSecureStorage.setMockInitialValues(<String, String>{
       SettingsService.keyOneLapUsername: 'stable-user',
-      SettingsService.keyOneLapPassword: 'stable-pass',
+      SettingsService.keyLookbackDays: '3',
     });
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          validateOneLapLogin: (String username, String password) async {
-            throw Exception('invalid credentials');
-          },
-        ),
-      ),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await tester.pumpAndSettle();
 
-    await enterVisibleText(tester, 'OneLap 用户名', 'wrong-user');
-    await enterVisibleText(tester, 'OneLap 密码', 'wrong-pass');
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '7');
 
-    await tapVisibleText(tester, '保存 OneLap 账号');
+    await tapVisibleText(tester, '保存同步设置');
+
+    expect(find.text('同步设置已保存'), findsOneWidget);
 
     final Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '7');
     expect(settings[SettingsService.keyOneLapUsername], 'stable-user');
-    expect(settings[SettingsService.keyOneLapPassword], 'stable-pass');
+  });
+
+  testWidgets('submitting lookback days field saves sync settings', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      SettingsService.keyLookbackDays: '3',
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpAndSettle();
+
+    final Finder field = fieldWithLabel('同步最近几天（默认 3）');
+    await tester.ensureVisible(field);
+    await tester.enterText(field, '5');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('同步设置已保存'), findsOneWidget);
+
+    final Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '5');
   });
 }

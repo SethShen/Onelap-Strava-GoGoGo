@@ -27,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _settingsService = SettingsService();
   final _controllers = <String, TextEditingController>{};
   bool _loading = true;
+  bool _savingOneLapCredentials = false;
 
   static const _obscured = {
     SettingsService.keyOneLapPassword,
@@ -82,12 +83,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _controllers[SettingsService.keyOneLapPassword]!.text.trim(),
     };
     if (validateAfterSave) {
-      await _validateOneLapLogin(
-        username: values[SettingsService.keyOneLapUsername]!,
-        password: values[SettingsService.keyOneLapPassword]!,
-        persistValues: values,
-        showSuccessMessage: false,
-      );
+      if (mounted) {
+        setState(() => _savingOneLapCredentials = true);
+      }
+      try {
+        await _validateOneLapLogin(
+          username: values[SettingsService.keyOneLapUsername]!,
+          password: values[SettingsService.keyOneLapPassword]!,
+          persistValues: values,
+          showSuccessMessage: false,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('OneLap 账号已保存')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _savingOneLapCredentials = false);
+        }
+      }
       return;
     }
     await _settingsService.saveSettings(values);
@@ -146,6 +161,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('OneLap 登录验证失败: $e')));
       }
+    }
+  }
+
+  Future<void> _saveSyncSettings() async {
+    await _settingsService.saveSettings({
+      SettingsService.keyLookbackDays:
+          _controllers[SettingsService.keyLookbackDays]!.text.trim(),
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
     }
   }
 
@@ -294,9 +321,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () =>
-                      _saveOneLapCredentials(validateAfterSave: true),
-                  child: const Text('保存 OneLap 账号'),
+                  onPressed: _savingOneLapCredentials
+                      ? null
+                      : () => _saveOneLapCredentials(validateAfterSave: true),
+                  child: _savingOneLapCredentials
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('验证中...'),
+                          ],
+                        )
+                      : const Text('保存 OneLap 账号'),
                 ),
               ),
             ],
@@ -312,11 +353,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: TextField(
               controller: _controllers[SettingsService.keyLookbackDays],
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _saveSyncSettings(),
               decoration: InputDecoration(
                 labelText: _labels[SettingsService.keyLookbackDays],
                 border: const OutlineInputBorder(),
               ),
             ),
+          ),
+          ElevatedButton(
+            onPressed: _saveSyncSettings,
+            child: const Text('保存同步设置'),
           ),
           const SizedBox(height: 16),
           const Text(
