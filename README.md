@@ -2,15 +2,16 @@
 
 <img src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="96" alt="顽爪爪同步图标">
 
-一款可以同步顽鹿 FIT 文件到 Strava 的小工具。
+一款可以同步顽鹿 FIT 文件到 Strava 的小工具，也支持通过系统分享直接导入 FIT 文件上传。
 
-*A lightweight Android app to sync OneLap (顽鹿) FIT activity files to Strava.*
+*A lightweight app to sync OneLap (顽鹿) FIT activity files to Strava, with support for importing FIT files directly from the system share sheet.*
 
 ---
 
 ## 功能 / Features
 
 - 自动从 OneLap 下载 FIT 活动文件 / Auto-download FIT files from OneLap
+- 支持从系统分享或“打开方式”接收 FIT 文件后上传到 Strava / Import FIT files from system share or open-in flows, then upload to Strava
 - 上传到 Strava，自动去重避免重复 / Upload to Strava with deduplication
 - 设置同步天数（默认 3 天）/ Configurable lookback days (default 3)
 - 内置 Strava OAuth 授权，无需手动填写 Token / Built-in Strava OAuth flow
@@ -35,6 +36,34 @@
 2. 创建应用，Authorization Callback Domain 填 `localhost` / Create an app, set Authorization Callback Domain to `localhost`
 3. 复制 Client ID 和 Client Secret 填入 App 设置 / Copy Client ID and Client Secret into the app settings
 4. 点击「授权 Strava」完成 OAuth 授权，Access Token、Refresh Token 和 Expires At 将自动填入 / Tap "授权 Strava" to complete OAuth — Access Token, Refresh Token and Expires At will be filled in automatically
+
+---
+
+## 使用方式 / Usage
+
+### 顽鹿内直接同步 / Sync from OneLap
+
+在 App 中配置好顽鹿账号和 Strava 后，点击同步即可按设置的回看天数自动下载并上传活动。
+
+*After configuring OneLap and Strava in the app, tap sync to download and upload activities within the configured lookback window.*
+
+### 通过系统分享导入 FIT / Import FIT via System Share
+
+如果你已经拿到了 `.fit` 文件，也可以直接从系统分享菜单或“打开方式”把文件发给顽爪爪：
+
+1. 在其他 App 中选中 `.fit` 文件并分享给顽爪爪 / In another app, share the `.fit` file to WanSync
+2. 顽爪爪会打开确认页并显示文件名 / WanSync opens a confirmation screen and shows the file name
+3. 点击「上传到 Strava」后开始上传 / Tap "上传到 Strava" to start upload
+
+如果还没有完成 Strava 配置，App 会提示先去设置；这次分享不会被保留，需要配置完成后重新分享文件。
+
+*If Strava is not configured yet, the app will ask you to finish setup first. The current shared file is not queued, so you need to share it again after setup.*
+
+### 顽鹿下载失败时的备用方式 / Fallback When OneLap Download Fails
+
+如果某条活动在顽鹿侧下载失败，但顽鹿本身还能导出 FIT，也可以直接从顽鹿把 FIT 分享到顽爪爪，再手动上传到 Strava。
+
+*If a specific activity fails to download through the OneLap sync path, but OneLap can still export the FIT file, you can share that FIT file directly to WanSync and upload it manually to Strava.*
 
 ---
 
