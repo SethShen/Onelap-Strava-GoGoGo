@@ -33,8 +33,6 @@ migrate_working_dir/
 /build/
 /coverage/
 .worktrees/
-docs/plans/
-docs/specs/
 
 # Symbolication related
 app.*.symbols
