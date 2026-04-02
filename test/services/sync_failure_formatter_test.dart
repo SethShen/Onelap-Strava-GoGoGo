@@ -11,6 +11,28 @@ void main() {
       final String result = SyncFailureFormatter.toUserMessage(raw);
 
       expect(result, contains('OneLap 源文件可能已过期或已删除'));
+      expect(result, contains('可以试试先从 OneLap/顽鹿导出 FIT'));
+      expect(result, contains('再分享到顽爪爪进行同步'));
+    });
+
+    test('returns friendly message for OneLap timeout download failures', () {
+      const String raw = '下载失败 (demo.fit): request timed out';
+
+      final String result = SyncFailureFormatter.toUserMessage(raw);
+
+      expect(result, contains('OneLap 下载超时'));
+      expect(result, contains('可以试试先从 OneLap/顽鹿导出 FIT'));
+      expect(result, contains('再分享到顽爪爪进行同步'));
+    });
+
+    test('returns friendly message for generic OneLap download failures', () {
+      const String raw = '下载失败 (demo.fit): socket exception';
+
+      final String result = SyncFailureFormatter.toUserMessage(raw);
+
+      expect(result, contains('OneLap 文件下载失败'));
+      expect(result, contains('可以试试先从 OneLap/顽鹿导出 FIT'));
+      expect(result, contains('再分享到顽爪爪进行同步'));
     });
 
     test('returns friendly message for Strava 5xx upload failures', () {
@@ -20,6 +42,7 @@ void main() {
       final String result = SyncFailureFormatter.toUserMessage(raw);
 
       expect(result, contains('Strava 服务暂时不可用'));
+      expect(result, isNot(contains('可以试试先从 OneLap/顽鹿导出 FIT')));
     });
   });
 
