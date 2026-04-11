@@ -37,6 +37,9 @@
 3. 复制 Client ID 和 Client Secret 填入 App 设置 / Copy Client ID and Client Secret into the app settings
 4. 点击「授权 Strava」完成 OAuth 授权，Access Token、Refresh Token 和 Expires At 将自动填入 / Tap "授权 Strava" to complete OAuth — Access Token, Refresh Token and Expires At will be filled in automatically
 
+> 使用Google账户登录时，可能因谷歌限制无法正常完成OAuth授权，此时可在https://www.strava.com/account 中修改电子邮件地址，之后使用新的邮箱登录
+>
+> When logging in with a Google account, OAuth authorization may not be completed normally due to Google's restrictions. In this case, you can modify your email address at https://www.strava.com/account and then log in using the email address
 ---
 
 ## 使用方式 / Usage
