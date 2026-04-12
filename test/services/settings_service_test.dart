@@ -25,6 +25,24 @@ class _ConcurrentUnsafeStore implements SettingsStore {
 
 void main() {
   test(
+    'loadSettings returns gcj correction setting while preserving existing keys',
+    () async {
+      final _ConcurrentUnsafeStore store = _ConcurrentUnsafeStore();
+      final SettingsService service = SettingsService(store: store);
+
+      await service.saveSettings(<String, String>{
+        SettingsService.keyLookbackDays: '7',
+        SettingsService.keyGcjCorrectionEnabled: 'true',
+      });
+
+      final Map<String, String> settings = await service.loadSettings();
+      expect(settings[SettingsService.keyLookbackDays], '7');
+      expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+      expect(settings[SettingsService.keyStravaClientId], '');
+    },
+  );
+
+  test(
     'saveSettings persists all values even when backend is concurrency-unsafe',
     () async {
       final _ConcurrentUnsafeStore store = _ConcurrentUnsafeStore();

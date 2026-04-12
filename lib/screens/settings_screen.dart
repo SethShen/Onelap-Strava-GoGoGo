@@ -13,10 +13,12 @@ typedef ValidateOneLapLoginCallback =
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
+    this.settingsService,
     this.authorizeStrava,
     this.validateOneLapLogin,
   });
 
+  final SettingsService? settingsService;
   final AuthorizeStravaCallback? authorizeStrava;
   final ValidateOneLapLoginCallback? validateOneLapLogin;
 
@@ -25,10 +27,22 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _settingsService = SettingsService();
+  late final SettingsService _settingsService;
   final _controllers = <String, TextEditingController>{};
   bool _loading = true;
   bool _savingOneLapCredentials = false;
+  bool _gcjCorrectionEnabled = false;
+
+  static const _controllerKeys = [
+    SettingsService.keyOneLapUsername,
+    SettingsService.keyOneLapPassword,
+    SettingsService.keyStravaClientId,
+    SettingsService.keyStravaClientSecret,
+    SettingsService.keyStravaRefreshToken,
+    SettingsService.keyStravaAccessToken,
+    SettingsService.keyStravaExpiresAt,
+    SettingsService.keyLookbackDays,
+  ];
 
   static const _obscured = {
     SettingsService.keyOneLapPassword,
@@ -49,7 +63,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    for (final key in SettingsService.allKeys) {
+    _settingsService = widget.settingsService ?? SettingsService();
+    for (final key in _controllerKeys) {
       _controllers[key] = TextEditingController();
     }
     _load();
@@ -57,16 +72,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final values = await _settingsService.loadSettings();
-    for (final key in SettingsService.allKeys) {
+    if (!mounted) {
+      return;
+    }
+    for (final key in _controllerKeys) {
       _controllers[key]!.text = values[key] ?? '';
     }
-    setState(() => _loading = false);
+    setState(() {
+      _gcjCorrectionEnabled =
+          values[SettingsService.keyGcjCorrectionEnabled] == 'true';
+      _loading = false;
+    });
   }
 
   Future<void> _save() async {
     final values = {
-      for (final key in SettingsService.allKeys)
-        key: _controllers[key]!.text.trim(),
+      for (final key in _controllerKeys) key: _controllers[key]!.text.trim(),
+      SettingsService.keyGcjCorrectionEnabled: _gcjCorrectionEnabled.toString(),
     };
     await _settingsService.saveSettings(values);
     if (mounted) {
@@ -90,13 +112,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _savingOneLapCredentials = true);
       }
       try {
-        await _validateOneLapLogin(
+        final bool success = await _validateOneLapLogin(
           username: values[SettingsService.keyOneLapUsername]!,
           password: values[SettingsService.keyOneLapPassword]!,
           persistValues: values,
           showSuccessMessage: false,
         );
-        if (mounted) {
+        if (success && mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('OneLap 账号已保存')));
@@ -116,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _validateOneLapLogin({
+  Future<bool> _validateOneLapLogin({
     String? username,
     String? password,
     Map<String, String>? persistValues,
@@ -135,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('请先填写 OneLap 用户名和密码')));
       }
-      return;
+      return false;
     }
 
     try {
@@ -150,21 +172,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return client.login();
           };
       await validator(effectiveUsername, effectivePassword);
-      if (persistValues != null) {
-        await _settingsService.saveSettings(persistValues);
-      }
-      if (mounted && showSuccessMessage) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('OneLap 登录验证成功')));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('OneLap 登录验证失败: $e')));
       }
+      return false;
     }
+
+    if (persistValues != null) {
+      try {
+        await _settingsService.saveSettings(persistValues);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+        }
+        return false;
+      }
+    }
+
+    if (mounted && showSuccessMessage) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('OneLap 登录验证成功')));
+    }
+    return true;
   }
 
   Future<void> _saveSyncSettings() async {
@@ -185,6 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await _settingsService.saveSettings({
       SettingsService.keyLookbackDays: lookbackDays,
+      SettingsService.keyGcjCorrectionEnabled: _gcjCorrectionEnabled.toString(),
     });
     if (mounted) {
       ScaffoldMessenger.of(
@@ -369,6 +405,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('上传前将 GCJ-02 转为 WGS84'),
+            subtitle: const Text('仅在来源轨迹偏移且确认使用 GCJ-02 时开启'),
+            value: _gcjCorrectionEnabled,
+            onChanged: (bool value) {
+              setState(() => _gcjCorrectionEnabled = value);
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(

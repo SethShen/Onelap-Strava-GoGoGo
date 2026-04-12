@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/sync_summary.dart';
 import '../services/onelap_client.dart';
+import '../services/fit_coordinate_rewrite_service.dart';
 import '../services/settings_service.dart';
 import '../services/sync_failure_formatter.dart';
 import '../services/state_store.dart';
@@ -84,12 +85,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final expiresAt =
           int.tryParse(settings[SettingsService.keyStravaExpiresAt] ?? '0') ??
           0;
+      final bool gcjCorrectionEnabled =
+          settings[SettingsService.keyGcjCorrectionEnabled] == 'true';
 
       if (username.isEmpty ||
           password.isEmpty ||
           clientId.isEmpty ||
           clientSecret.isEmpty ||
           refreshToken.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _error = '请先在设置中填写凭证';
           _syncing = false;
@@ -113,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> {
         oneLapClient: oneLap,
         stravaClient: strava,
         stateStore: _stateStore,
+        gcjCorrectionEnabled: gcjCorrectionEnabled,
+        rewriteService: FitCoordinateRewriteService(),
       );
 
       final summary = await engine.runOnce(
@@ -120,10 +126,12 @@ class _HomeScreenState extends State<HomeScreen> {
             int.tryParse(settings[SettingsService.keyLookbackDays] ?? '') ?? 3,
       );
       await _loadLastSyncTime();
+      if (!mounted) return;
       setState(() => _syncing = false);
 
-      if (mounted) _showSyncResult(summary);
+      _showSyncResult(summary);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _syncing = false;

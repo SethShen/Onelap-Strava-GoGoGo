@@ -36,6 +36,7 @@ class SettingsService {
   static const keyStravaAccessToken = 'STRAVA_ACCESS_TOKEN';
   static const keyStravaExpiresAt = 'STRAVA_EXPIRES_AT';
   static const keyLookbackDays = 'LOOKBACK_DAYS';
+  static const keyGcjCorrectionEnabled = 'GCJ_CORRECTION_ENABLED';
 
   static const allKeys = [
     keyOneLapUsername,
@@ -46,6 +47,7 @@ class SettingsService {
     keyStravaAccessToken,
     keyStravaExpiresAt,
     keyLookbackDays,
+    keyGcjCorrectionEnabled,
   ];
 
   Future<Map<String, String>> loadSettings() async {

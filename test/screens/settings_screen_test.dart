@@ -6,6 +6,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onelap_strava_sync/screens/settings_screen.dart';
 import 'package:onelap_strava_sync/services/settings_service.dart';
 
+class InMemorySettingsStore implements SettingsStore {
+  InMemorySettingsStore([Map<String, String>? initialValues])
+    : _values = Map<String, String>.from(initialValues ?? <String, String>{});
+
+  final Map<String, String> _values;
+
+  @override
+  Future<Map<String, String>> readAll() async {
+    return Map<String, String>.from(_values);
+  }
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
+  }
+}
+
+class ThrowOnWriteSettingsStore extends InMemorySettingsStore {
+  ThrowOnWriteSettingsStore([super.initialValues]);
+
+  @override
+  Future<void> write({required String key, required String value}) {
+    throw Exception('save failed');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -46,6 +72,13 @@ void main() {
     }
 
     return find.text(text);
+  }
+
+  Finder gcjCorrectionSwitch() {
+    return find.descendant(
+      of: find.widgetWithText(SwitchListTile, '上传前将 GCJ-02 转为 WGS84'),
+      matching: find.byType(Switch),
+    );
   }
 
   Future<void> tapVisibleText(WidgetTester tester, String text) async {
@@ -229,6 +262,10 @@ void main() {
         find.text('OneLap 登录验证失败: Exception: invalid credentials'),
         findsOneWidget,
       );
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      expect(find.text('OneLap 账号已保存'), findsNothing);
       expect(find.text('保存 OneLap 账号'), findsOneWidget);
       expect(find.text('验证中...'), findsNothing);
 
@@ -238,6 +275,59 @@ void main() {
       expect(settings[SettingsService.keyOneLapPassword], 'stable-pass');
     },
   );
+
+  testWidgets('empty OneLap credentials do not show saved success state', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          validateOneLapLogin: (String username, String password) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tapVisibleText(tester, '保存 OneLap 账号');
+
+    expect(find.text('请先填写 OneLap 用户名和密码'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    expect(find.text('OneLap 账号已保存'), findsNothing);
+  });
+
+  testWidgets('persistence failure after OneLap validation shows save error', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final SettingsService settingsService = SettingsService(
+      store: ThrowOnWriteSettingsStore(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsService: settingsService,
+          validateOneLapLogin: (String username, String password) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'OneLap 用户名', 'persist-user');
+    await enterVisibleText(tester, 'OneLap 密码', 'persist-pass');
+
+    await tapVisibleText(tester, '保存 OneLap 账号');
+
+    expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
+    expect(find.text('OneLap 登录验证失败: Exception: save failed'), findsNothing);
+    expect(find.text('OneLap 账号已保存'), findsNothing);
+  });
 
   testWidgets('save sync settings persists lookback days only', (
     WidgetTester tester,
@@ -261,6 +351,82 @@ void main() {
     final Map<String, String> settings = await SettingsService().loadSettings();
     expect(settings[SettingsService.keyLookbackDays], '7');
     expect(settings[SettingsService.keyOneLapUsername], 'stable-user');
+  });
+
+  testWidgets('rewrite switch loads from stored settings', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      SettingsService.keyGcjCorrectionEnabled: 'true',
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('上传前将 GCJ-02 转为 WGS84'), findsOneWidget);
+    expect(find.text('仅在来源轨迹偏移且确认使用 GCJ-02 时开启'), findsOneWidget);
+
+    final Switch rewriteSwitch = tester.widget<Switch>(gcjCorrectionSwitch());
+    expect(rewriteSwitch.value, isTrue);
+  });
+
+  testWidgets('toggling rewrite switch and saving sync settings persists it', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      SettingsService.keyLookbackDays: '3',
+      SettingsService.keyGcjCorrectionEnabled: 'false',
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(gcjCorrectionSwitch());
+    await tester.tap(gcjCorrectionSwitch());
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '7');
+    await tapVisibleText(tester, '保存同步设置');
+
+    final Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '7');
+    expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+  });
+
+  testWidgets('Strava save flows preserve rewrite switch value', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      SettingsService.keyGcjCorrectionEnabled: 'true',
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          authorizeStrava: (String clientId, String clientSecret) async => true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'Strava Client ID', '12345');
+    await enterVisibleText(tester, 'Strava Client Secret', 'secret-xyz');
+
+    await tapVisibleText(tester, '保存');
+
+    Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+
+    await tapVisibleText(tester, '授权 Strava');
+
+    settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
   });
 
   testWidgets('submitting lookback days field saves sync settings', (
@@ -352,5 +518,17 @@ void main() {
     await tapVisibleText(tester, '保存同步设置');
 
     expect(hasFocusedEditableText(tester), isFalse);
+  });
+
+  testWidgets('disposing settings screen during load does not throw', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
   });
 }

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/onelap_activity.dart';
 import '../models/sync_summary.dart';
+import 'fit_coordinate_rewrite_service.dart';
 import 'onelap_client.dart';
 import 'strava_client.dart';
 import 'state_store.dart';
@@ -12,11 +13,15 @@ class SyncEngine {
   final OneLapClient oneLapClient;
   final StravaClient stravaClient;
   final StateStore stateStore;
+  final bool gcjCorrectionEnabled;
+  final FitCoordinateRewriteService? rewriteService;
 
   SyncEngine({
     required this.oneLapClient,
     required this.stravaClient,
     required this.stateStore,
+    this.gcjCorrectionEnabled = false,
+    this.rewriteService,
   });
 
   Future<SyncSummary> runOnce({
@@ -86,8 +91,17 @@ class SyncEngine {
         continue;
       }
 
+      File uploadFile = fitFile;
+      bool rewriteCompleted = false;
       try {
-        final uploadId = await stravaClient.uploadFit(fitFile);
+        if (gcjCorrectionEnabled) {
+          final FitCoordinateRewriteService effectiveRewriteService =
+              rewriteService ?? FitCoordinateRewriteService();
+          uploadFile = await effectiveRewriteService.rewrite(fitFile);
+          rewriteCompleted = true;
+        }
+
+        final uploadId = await stravaClient.uploadFit(uploadFile);
         final result = await stravaClient.pollUpload(uploadId);
         final activityId = result['activity_id'];
         final error = result['error'];
@@ -117,7 +131,19 @@ class SyncEngine {
         success++;
       } catch (e) {
         failed++;
-        failureReasons.add('上传失败 (${item.sourceFilename}): $e');
+        if (gcjCorrectionEnabled && !rewriteCompleted) {
+          failureReasons.add(
+            '坐标转换失败 (${item.sourceFilename}): ${'$e'.replaceFirst('Exception: ', '')}',
+          );
+        } else {
+          failureReasons.add('上传失败 (${item.sourceFilename}): $e');
+        }
+      } finally {
+        if (uploadFile.path != fitFile.path) {
+          await uploadFile.delete().catchError((_) => uploadFile);
+          final Directory parentDirectory = uploadFile.parent;
+          await parentDirectory.delete().catchError((_) => parentDirectory);
+        }
       }
     }
 

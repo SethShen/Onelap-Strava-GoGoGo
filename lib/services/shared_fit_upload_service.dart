@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'fit_coordinate_rewrite_service.dart';
 import 'settings_service.dart';
 import 'strava_client.dart';
 import '../models/shared_fit_draft.dart';
@@ -28,11 +29,14 @@ typedef SharedFitUploadExecutor =
 class SharedFitUploadService {
   SharedFitUploadService({
     SharedFitSettingsLoader? loadSettings,
+    FitCoordinateRewriteService? rewriteService,
     SharedFitUploadExecutor? executeUpload,
   }) : _loadSettings = loadSettings ?? SettingsService().loadSettings,
+       _rewriteService = rewriteService,
        _executeUpload = executeUpload ?? _defaultExecuteUpload;
 
   final SharedFitSettingsLoader _loadSettings;
+  final FitCoordinateRewriteService? _rewriteService;
   final SharedFitUploadExecutor _executeUpload;
 
   Future<SharedFitUploadResult> uploadDraft(SharedFitDraft draft) async {
@@ -49,35 +53,75 @@ class SharedFitUploadService {
       );
     }
 
-    final Map<String, String> settings = await _loadSettings();
+    final Map<String, String> settings;
+    try {
+      settings = await _loadSettings();
+    } on Exception catch (error) {
+      return SharedFitUploadResult(
+        status: SharedFitUploadStatus.failure,
+        message:
+            'Failed to load settings: ${'$error'.replaceFirst('Exception: ', '')}',
+      );
+    }
+
     if (!_hasRequiredStravaConfiguration(settings)) {
       return const SharedFitUploadResult(
         status: SharedFitUploadStatus.missingConfiguration,
       );
     }
 
+    File uploadFile = file;
+    bool shouldDeleteUploadFile = false;
+    if (_isGcjCorrectionEnabled(settings)) {
+      final FitCoordinateRewriteService rewriteService =
+          _rewriteService ?? FitCoordinateRewriteService();
+      try {
+        uploadFile = await rewriteService.rewrite(file);
+        shouldDeleteUploadFile = uploadFile.path != file.path;
+      } on Exception catch (error) {
+        return SharedFitUploadResult(
+          status: SharedFitUploadStatus.failure,
+          message:
+              'FIT coordinate rewrite failed: ${'$error'.replaceFirst('Exception: ', '')}',
+        );
+      }
+    }
+
     try {
-      await _executeUpload(file: file, settings: settings);
-      return const SharedFitUploadResult(status: SharedFitUploadStatus.success);
-    } on Exception catch (error) {
-      return SharedFitUploadResult(
-        status: SharedFitUploadStatus.failure,
-        message: '$error'.replaceFirst('Exception: ', ''),
-      );
+      try {
+        await _executeUpload(file: uploadFile, settings: settings);
+        return const SharedFitUploadResult(
+          status: SharedFitUploadStatus.success,
+        );
+      } on Exception catch (error) {
+        return SharedFitUploadResult(
+          status: SharedFitUploadStatus.failure,
+          message: '$error'.replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (shouldDeleteUploadFile) {
+        await _deleteTempUploadFile(uploadFile);
+      }
     }
   }
 
   bool _hasFitExtension(SharedFitDraft draft) {
-    final String fileName = draft.displayName.isNotEmpty
-        ? draft.displayName
-        : draft.localFilePath;
-    return fileName.toLowerCase().endsWith('.fit');
+    return draft.localFilePath.toLowerCase().endsWith('.fit') ||
+        draft.displayName.toLowerCase().endsWith('.fit');
   }
 
   bool _hasRequiredStravaConfiguration(Map<String, String> settings) {
     return _hasValue(settings, SettingsService.keyStravaClientId) &&
         _hasValue(settings, SettingsService.keyStravaClientSecret) &&
         _hasValue(settings, SettingsService.keyStravaRefreshToken);
+  }
+
+  bool _isGcjCorrectionEnabled(Map<String, String> settings) {
+    return (settings[SettingsService.keyGcjCorrectionEnabled] ?? '')
+            .trim()
+            .toLowerCase() ==
+        'true';
   }
 
   bool _hasValue(Map<String, String> settings, String key) {
@@ -94,6 +138,16 @@ class SharedFitUploadService {
       return true;
     } on FileSystemException {
       return false;
+    }
+  }
+
+  Future<void> _deleteTempUploadFile(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } on FileSystemException {
+      // Best-effort cleanup for rewritten temp files.
     }
   }
 
