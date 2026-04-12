@@ -13,6 +13,7 @@
 - 自动从 OneLap 下载 FIT 活动文件 / Auto-download FIT files from OneLap
 - 支持从系统分享或“打开方式”接收 FIT 文件后上传到 Strava / Import FIT files from system share or open-in flows, then upload to Strava
 - 上传到 Strava，自动去重避免重复 / Upload to Strava with deduplication
+- 可选在上传前将 GCJ-02 轨迹转换为 WGS84，适用于自动同步和分享上传 / Optionally convert GCJ-02 tracks to WGS84 before upload for both sync and shared FIT uploads
 - 设置同步天数（默认 3 天）/ Configurable lookback days (default 3)
 - 内置 Strava OAuth 授权，无需手动填写 Token / Built-in Strava OAuth flow
 - 凭证仅保存在设备本地 / Credentials stored locally on device only
@@ -50,6 +51,10 @@
 
 *After configuring OneLap and Strava in the app, tap sync to download and upload activities within the configured lookback window.*
 
+如果你的来源轨迹使用 GCJ-02，或者导入到 Strava 后路线明显偏移，可以在设置中开启「上传前将 GCJ-02 转为 WGS84」。该选项同时作用于顽鹿自动同步和系统分享上传。
+
+*If your source track uses GCJ-02, or the uploaded route appears visibly offset in Strava, enable `上传前将 GCJ-02 转为 WGS84` in Settings. This option applies to both automatic OneLap sync and shared FIT uploads.*
+
 ### 通过系统分享导入 FIT / Import FIT via System Share
 
 如果你已经拿到了 `.fit` 文件，也可以直接从系统分享菜单或“打开方式”把文件发给顽爪爪：
@@ -61,6 +66,10 @@
 如果还没有完成 Strava 配置，App 会提示先去设置；这次分享不会被保留，需要配置完成后重新分享文件。
 
 *If Strava is not configured yet, the app will ask you to finish setup first. The current shared file is not queued, so you need to share it again after setup.*
+
+如果分享上传的 FIT 也需要做坐标修正，可以在设置中提前打开坐标转换开关；分享上传会使用同一套上传前转换逻辑。
+
+*If shared FIT uploads also need coordinate correction, enable the coordinate rewrite switch in Settings first; shared uploads use the same pre-upload conversion flow.*
 
 ### 顽鹿下载失败时的备用方式 / Fallback When OneLap Download Fails
 

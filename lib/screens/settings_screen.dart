@@ -32,6 +32,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   bool _savingOneLapCredentials = false;
   bool _gcjCorrectionEnabled = false;
+  bool _savingGcjCorrectionEnabled = false;
+  bool? _pendingGcjCorrectionEnabled;
+  bool _confirmedGcjCorrectionEnabled = false;
 
   static const _controllerKeys = [
     SettingsService.keyOneLapUsername,
@@ -76,25 +79,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     for (final key in _controllerKeys) {
-      _controllers[key]!.text = values[key] ?? '';
+      _controllers[key]!.text = key == SettingsService.keyLookbackDays
+          ? (values[key]?.isNotEmpty == true ? values[key]! : '3')
+          : values[key] ?? '';
     }
     setState(() {
       _gcjCorrectionEnabled =
           values[SettingsService.keyGcjCorrectionEnabled] == 'true';
+      _confirmedGcjCorrectionEnabled = _gcjCorrectionEnabled;
       _loading = false;
     });
   }
 
-  Future<void> _save() async {
+  Future<bool> _save() async {
+    final String? lookbackDays = _validatedLookbackDays();
+    if (lookbackDays == null) {
+      return false;
+    }
+
     final values = {
       for (final key in _controllerKeys) key: _controllers[key]!.text.trim(),
+      SettingsService.keyLookbackDays: lookbackDays,
       SettingsService.keyGcjCorrectionEnabled: _gcjCorrectionEnabled.toString(),
     };
-    await _settingsService.saveSettings(values);
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+    try {
+      await _settingsService.saveSettings(values);
+      _confirmedGcjCorrectionEnabled = _gcjCorrectionEnabled;
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+      }
+      return false;
     }
   }
 
@@ -205,6 +228,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSyncSettings() async {
     _dismissKeyboard();
 
+    final String? lookbackDays = _validatedLookbackDays();
+    if (lookbackDays == null) {
+      return;
+    }
+
+    try {
+      await _settingsService.saveSettings({
+        SettingsService.keyLookbackDays: lookbackDays,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+      }
+    }
+  }
+
+  Future<void> _saveGcjCorrectionEnabled(bool value) async {
+    if (value == _gcjCorrectionEnabled &&
+        !_savingGcjCorrectionEnabled &&
+        _pendingGcjCorrectionEnabled == null) {
+      return;
+    }
+
+    setState(() => _gcjCorrectionEnabled = value);
+
+    if (_savingGcjCorrectionEnabled) {
+      _pendingGcjCorrectionEnabled = value;
+      return;
+    }
+
+    _savingGcjCorrectionEnabled = true;
+    bool valueToPersist = value;
+
+    while (true) {
+      _pendingGcjCorrectionEnabled = null;
+
+      try {
+        await _settingsService.saveSettings({
+          SettingsService.keyGcjCorrectionEnabled: valueToPersist.toString(),
+        });
+        _confirmedGcjCorrectionEnabled = valueToPersist;
+      } catch (e) {
+        _savingGcjCorrectionEnabled = false;
+        _pendingGcjCorrectionEnabled = null;
+        if (mounted) {
+          setState(
+            () => _gcjCorrectionEnabled = _confirmedGcjCorrectionEnabled,
+          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+        }
+        return;
+      }
+
+      final bool? pendingValue = _pendingGcjCorrectionEnabled;
+      if (pendingValue == null || pendingValue == valueToPersist) {
+        _savingGcjCorrectionEnabled = false;
+        return;
+      }
+
+      valueToPersist = pendingValue;
+    }
+  }
+
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
+  String? _validatedLookbackDays() {
     final String lookbackDays = _controllers[SettingsService.keyLookbackDays]!
         .text
         .trim();
@@ -215,22 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('请输入大于 0 的整数天数')));
       }
-      return;
+      return null;
     }
-
-    await _settingsService.saveSettings({
-      SettingsService.keyLookbackDays: lookbackDays,
-      SettingsService.keyGcjCorrectionEnabled: _gcjCorrectionEnabled.toString(),
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
-    }
-  }
-
-  void _dismissKeyboard() {
-    FocusScope.of(context).unfocus();
+    return lookbackDays;
   }
 
   Future<void> _authorizeStrava() async {
@@ -251,8 +338,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    await _save();
+    final bool saved = await _save();
     if (!mounted) return;
+    if (!saved) return;
 
     final navigator = Navigator.of(context);
 
@@ -410,9 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('上传前将 GCJ-02 转为 WGS84'),
             subtitle: const Text('仅在来源轨迹偏移且确认使用 GCJ-02 时开启'),
             value: _gcjCorrectionEnabled,
-            onChanged: (bool value) {
-              setState(() => _gcjCorrectionEnabled = value);
-            },
+            onChanged: _saveGcjCorrectionEnabled,
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),

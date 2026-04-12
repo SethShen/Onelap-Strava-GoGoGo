@@ -32,6 +32,95 @@ class ThrowOnWriteSettingsStore extends InMemorySettingsStore {
   }
 }
 
+class DelayedReadSettingsStore extends InMemorySettingsStore {
+  DelayedReadSettingsStore(this._readCompleter, [super.initialValues]);
+
+  final Completer<void> _readCompleter;
+
+  @override
+  Future<Map<String, String>> readAll() async {
+    await _readCompleter.future;
+    return super.readAll();
+  }
+}
+
+class PendingWrite {
+  PendingWrite({
+    required this.key,
+    required this.value,
+    required this.completer,
+  });
+
+  final String key;
+  final String value;
+  final Completer<void> completer;
+}
+
+class ControlledWriteSettingsStore extends InMemorySettingsStore {
+  ControlledWriteSettingsStore([super.initialValues]);
+
+  final List<PendingWrite> writes = <PendingWrite>[];
+
+  @override
+  Future<void> write({required String key, required String value}) {
+    final Completer<void> completer = Completer<void>();
+    writes.add(PendingWrite(key: key, value: value, completer: completer));
+    return completer.future.then((_) {
+      _values[key] = value;
+    });
+  }
+}
+
+class FailControlledWriteSettingsStore extends ControlledWriteSettingsStore {
+  FailControlledWriteSettingsStore([super.initialValues]);
+
+  final Set<int> failingWriteIndexes = <int>{};
+
+  @override
+  Future<void> write({required String key, required String value}) {
+    final int writeIndex = writes.length;
+    final Completer<void> completer = Completer<void>();
+    writes.add(PendingWrite(key: key, value: value, completer: completer));
+    return completer.future.then((_) {
+      if (failingWriteIndexes.contains(writeIndex)) {
+        throw Exception('save failed');
+      }
+      _values[key] = value;
+    });
+  }
+}
+
+class CrossSaveRaceSettingsStore extends InMemorySettingsStore {
+  CrossSaveRaceSettingsStore([super.initialValues]);
+
+  Completer<void>? firstGcjWriteCompleter;
+  bool failFirstGcjWrite = false;
+  int _gcjWriteCount = 0;
+
+  @override
+  Future<void> write({required String key, required String value}) {
+    if (key != SettingsService.keyGcjCorrectionEnabled) {
+      _values[key] = value;
+      return Future<void>.value();
+    }
+
+    if (_gcjWriteCount == 0) {
+      _gcjWriteCount++;
+      firstGcjWriteCompleter = Completer<void>();
+      return firstGcjWriteCompleter!.future.then((_) {
+        if (failFirstGcjWrite) {
+          throw Exception('save failed');
+        }
+        _values[key] = value;
+      });
+    }
+
+    _gcjWriteCount++;
+    _values[key] = value;
+    return Future<void>.value();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -353,6 +442,58 @@ void main() {
     expect(settings[SettingsService.keyOneLapUsername], 'stable-user');
   });
 
+  testWidgets('general save rejects invalid lookback days', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final InMemorySettingsStore store = InMemorySettingsStore(<String, String>{
+      SettingsService.keyStravaClientId: 'stable-client-id',
+      SettingsService.keyLookbackDays: '3',
+    });
+    final SettingsService settingsService = SettingsService(store: store);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'Strava Client ID', 'new-client-id');
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+
+    await tapVisibleText(tester, '保存');
+
+    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+    expect(find.text('设置已保存'), findsNothing);
+
+    final Map<String, String> settings = await settingsService.loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '3');
+    expect(settings[SettingsService.keyStravaClientId], 'stable-client-id');
+  });
+
+  testWidgets('general save failure shows error and no success state', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final SettingsService settingsService = SettingsService(
+      store: ThrowOnWriteSettingsStore(<String, String>{
+        SettingsService.keyLookbackDays: '3',
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'Strava Client ID', 'client-id');
+    await tapVisibleText(tester, '保存');
+
+    expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
+    expect(find.text('设置已保存'), findsNothing);
+  });
+
   testWidgets('rewrite switch loads from stored settings', (
     WidgetTester tester,
   ) async {
@@ -397,6 +538,187 @@ void main() {
     expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
   });
 
+  testWidgets('tapping rewrite switch immediately persists GCJ setting', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final InMemorySettingsStore store = InMemorySettingsStore(<String, String>{
+      SettingsService.keyGcjCorrectionEnabled: 'false',
+      SettingsService.keyLookbackDays: '3',
+    });
+    final SettingsService settingsService = SettingsService(store: store);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(gcjCorrectionSwitch());
+    await tester.tap(gcjCorrectionSwitch());
+    await tester.pumpAndSettle();
+
+    final Map<String, String> settings = await settingsService.loadSettings();
+    expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+    expect(settings[SettingsService.keyLookbackDays], '3');
+  });
+
+  testWidgets('rapid rewrite toggles persist the latest value in order', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final ControlledWriteSettingsStore store =
+        ControlledWriteSettingsStore(<String, String>{
+          SettingsService.keyGcjCorrectionEnabled: 'false',
+          SettingsService.keyLookbackDays: '3',
+        });
+    final SettingsService settingsService = SettingsService(store: store);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(gcjCorrectionSwitch());
+    await tester.tap(gcjCorrectionSwitch());
+    await tester.pump();
+
+    expect(store.writes, hasLength(1));
+    expect(store.writes[0].key, SettingsService.keyGcjCorrectionEnabled);
+    expect(store.writes[0].value, 'true');
+
+    await tester.tap(gcjCorrectionSwitch());
+    await tester.pump();
+
+    final Switch rewriteSwitch = tester.widget<Switch>(gcjCorrectionSwitch());
+    expect(rewriteSwitch.value, isFalse);
+    expect(store.writes, hasLength(1));
+
+    store.writes[0].completer.complete();
+    await tester.pump();
+
+    expect(store.writes, hasLength(2));
+    expect(store.writes[1].key, SettingsService.keyGcjCorrectionEnabled);
+    expect(store.writes[1].value, 'false');
+
+    store.writes[1].completer.complete();
+    await tester.pumpAndSettle();
+
+    final Map<String, String> settings = await settingsService.loadSettings();
+    expect(settings[SettingsService.keyGcjCorrectionEnabled], 'false');
+  });
+
+  testWidgets(
+    'failed queued rewrite save falls back to last confirmed persisted state',
+    (WidgetTester tester) async {
+      useLargeTestViewport(tester);
+
+      final FailControlledWriteSettingsStore store =
+          FailControlledWriteSettingsStore(<String, String>{
+            SettingsService.keyGcjCorrectionEnabled: 'false',
+            SettingsService.keyLookbackDays: '3',
+          });
+      final SettingsService settingsService = SettingsService(store: store);
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(gcjCorrectionSwitch());
+      await tester.tap(gcjCorrectionSwitch());
+      await tester.pump();
+
+      await tester.tap(gcjCorrectionSwitch());
+      await tester.pump();
+
+      store.writes[0].completer.complete();
+      await tester.pump();
+
+      expect(store.writes, hasLength(2));
+      store.failingWriteIndexes.add(1);
+      store.writes[1].completer.complete();
+      await tester.pumpAndSettle();
+
+      final Switch rewriteSwitch = tester.widget<Switch>(gcjCorrectionSwitch());
+      expect(rewriteSwitch.value, isTrue);
+      expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
+
+      final Map<String, String> settings = await settingsService.loadSettings();
+      expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+    },
+  );
+
+  testWidgets(
+    'general save keeps confirmed rewrite state in sync during toggle race',
+    (WidgetTester tester) async {
+      useLargeTestViewport(tester);
+
+      final CrossSaveRaceSettingsStore store =
+          CrossSaveRaceSettingsStore(<String, String>{
+            SettingsService.keyGcjCorrectionEnabled: 'false',
+            SettingsService.keyLookbackDays: '3',
+          });
+      final SettingsService settingsService = SettingsService(store: store);
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(gcjCorrectionSwitch());
+      await tester.tap(gcjCorrectionSwitch());
+      await tester.pump();
+
+      await tapVisibleText(tester, '保存');
+
+      final Map<String, String> settingsAfterSave = await settingsService
+          .loadSettings();
+      expect(
+        settingsAfterSave[SettingsService.keyGcjCorrectionEnabled],
+        'true',
+      );
+
+      store.failFirstGcjWrite = true;
+      store.firstGcjWriteCompleter!.complete();
+      await tester.pumpAndSettle();
+
+      final Switch rewriteSwitch = tester.widget<Switch>(gcjCorrectionSwitch());
+      expect(rewriteSwitch.value, isTrue);
+
+      final Map<String, String> settings = await settingsService.loadSettings();
+      expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+    },
+  );
+
+  testWidgets(
+    'failed rewrite switch persistence reverts switch and shows error',
+    (WidgetTester tester) async {
+      useLargeTestViewport(tester);
+
+      final SettingsService settingsService = SettingsService(
+        store: ThrowOnWriteSettingsStore(<String, String>{
+          SettingsService.keyGcjCorrectionEnabled: 'false',
+          SettingsService.keyLookbackDays: '3',
+        }),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(gcjCorrectionSwitch());
+      await tester.tap(gcjCorrectionSwitch());
+      await tester.pumpAndSettle();
+
+      final Switch rewriteSwitch = tester.widget<Switch>(gcjCorrectionSwitch());
+      expect(rewriteSwitch.value, isFalse);
+      expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
+    },
+  );
+
   testWidgets('Strava save flows preserve rewrite switch value', (
     WidgetTester tester,
   ) async {
@@ -427,6 +749,37 @@ void main() {
 
     settings = await SettingsService().loadSettings();
     expect(settings[SettingsService.keyGcjCorrectionEnabled], 'true');
+  });
+
+  testWidgets('Strava auth does not continue when general save is invalid', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    int authorizeCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          authorizeStrava: (String clientId, String clientSecret) async {
+            authorizeCalls++;
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, 'Strava Client ID', '12345');
+    await enterVisibleText(tester, 'Strava Client Secret', 'secret-xyz');
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+
+    await tapVisibleText(tester, '授权 Strava');
+
+    expect(authorizeCalls, 0);
+    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+    expect(find.text('Strava 授权成功'), findsNothing);
+    expect(find.text('授权取消或失败'), findsNothing);
   });
 
   testWidgets('submitting lookback days field saves sync settings', (
@@ -471,6 +824,32 @@ void main() {
     expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
 
     final Map<String, String> settings = await SettingsService().loadSettings();
+    expect(settings[SettingsService.keyLookbackDays], '3');
+  });
+
+  testWidgets('sync settings save failure shows error and keeps value', (
+    WidgetTester tester,
+  ) async {
+    useLargeTestViewport(tester);
+
+    final SettingsService settingsService = SettingsService(
+      store: ThrowOnWriteSettingsStore(<String, String>{
+        SettingsService.keyLookbackDays: '3',
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
+    await tester.pumpAndSettle();
+
+    await enterVisibleText(tester, '同步最近几天（默认 3）', '6');
+    await tapVisibleText(tester, '保存同步设置');
+
+    expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
+    expect(find.text('同步设置已保存'), findsNothing);
+
+    final Map<String, String> settings = await settingsService.loadSettings();
     expect(settings[SettingsService.keyLookbackDays], '3');
   });
 
@@ -525,8 +904,16 @@ void main() {
   ) async {
     useLargeTestViewport(tester);
 
-    await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
+    final Completer<void> readCompleter = Completer<void>();
+    final SettingsService settingsService = SettingsService(
+      store: DelayedReadSettingsStore(readCompleter),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsScreen(settingsService: settingsService)),
+    );
     await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    readCompleter.complete();
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
