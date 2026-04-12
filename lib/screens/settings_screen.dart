@@ -13,10 +13,12 @@ typedef ValidateOneLapLoginCallback =
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
+    this.settingsService,
     this.authorizeStrava,
     this.validateOneLapLogin,
   });
 
+  final SettingsService? settingsService;
   final AuthorizeStravaCallback? authorizeStrava;
   final ValidateOneLapLoginCallback? validateOneLapLogin;
 
@@ -25,10 +27,25 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _settingsService = SettingsService();
+  late final SettingsService _settingsService;
   final _controllers = <String, TextEditingController>{};
   bool _loading = true;
   bool _savingOneLapCredentials = false;
+  bool _gcjCorrectionEnabled = false;
+  bool _savingGcjCorrectionEnabled = false;
+  bool? _pendingGcjCorrectionEnabled;
+  bool _confirmedGcjCorrectionEnabled = false;
+
+  static const _controllerKeys = [
+    SettingsService.keyOneLapUsername,
+    SettingsService.keyOneLapPassword,
+    SettingsService.keyStravaClientId,
+    SettingsService.keyStravaClientSecret,
+    SettingsService.keyStravaRefreshToken,
+    SettingsService.keyStravaAccessToken,
+    SettingsService.keyStravaExpiresAt,
+    SettingsService.keyLookbackDays,
+  ];
 
   static const _obscured = {
     SettingsService.keyOneLapPassword,
@@ -49,7 +66,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    for (final key in SettingsService.allKeys) {
+    _settingsService = widget.settingsService ?? SettingsService();
+    for (final key in _controllerKeys) {
       _controllers[key] = TextEditingController();
     }
     _load();
@@ -57,22 +75,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final values = await _settingsService.loadSettings();
-    for (final key in SettingsService.allKeys) {
-      _controllers[key]!.text = values[key] ?? '';
+    if (!mounted) {
+      return;
     }
-    setState(() => _loading = false);
+    for (final key in _controllerKeys) {
+      _controllers[key]!.text = key == SettingsService.keyLookbackDays
+          ? (values[key]?.isNotEmpty == true ? values[key]! : '3')
+          : values[key] ?? '';
+    }
+    setState(() {
+      _gcjCorrectionEnabled =
+          values[SettingsService.keyGcjCorrectionEnabled] == 'true';
+      _confirmedGcjCorrectionEnabled = _gcjCorrectionEnabled;
+      _loading = false;
+    });
   }
 
-  Future<void> _save() async {
+  Future<bool> _save() async {
+    final String? lookbackDays = _validatedLookbackDays();
+    if (lookbackDays == null) {
+      return false;
+    }
+
     final values = {
-      for (final key in SettingsService.allKeys)
-        key: _controllers[key]!.text.trim(),
+      for (final key in _controllerKeys) key: _controllers[key]!.text.trim(),
+      SettingsService.keyLookbackDays: lookbackDays,
+      SettingsService.keyGcjCorrectionEnabled: _gcjCorrectionEnabled.toString(),
     };
-    await _settingsService.saveSettings(values);
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+    try {
+      await _settingsService.saveSettings(values);
+      _confirmedGcjCorrectionEnabled = _gcjCorrectionEnabled;
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+      }
+      return false;
     }
   }
 
@@ -90,13 +135,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _savingOneLapCredentials = true);
       }
       try {
-        await _validateOneLapLogin(
+        final bool success = await _validateOneLapLogin(
           username: values[SettingsService.keyOneLapUsername]!,
           password: values[SettingsService.keyOneLapPassword]!,
           persistValues: values,
           showSuccessMessage: false,
         );
-        if (mounted) {
+        if (success && mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('OneLap 账号已保存')));
@@ -116,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _validateOneLapLogin({
+  Future<bool> _validateOneLapLogin({
     String? username,
     String? password,
     Map<String, String>? persistValues,
@@ -135,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('请先填写 OneLap 用户名和密码')));
       }
-      return;
+      return false;
     }
 
     try {
@@ -150,26 +195,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return client.login();
           };
       await validator(effectiveUsername, effectivePassword);
-      if (persistValues != null) {
-        await _settingsService.saveSettings(persistValues);
-      }
-      if (mounted && showSuccessMessage) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('OneLap 登录验证成功')));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('OneLap 登录验证失败: $e')));
       }
+      return false;
     }
+
+    if (persistValues != null) {
+      try {
+        await _settingsService.saveSettings(persistValues);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+        }
+        return false;
+      }
+    }
+
+    if (mounted && showSuccessMessage) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('OneLap 登录验证成功')));
+    }
+    return true;
   }
 
   Future<void> _saveSyncSettings() async {
     _dismissKeyboard();
 
+    final String? lookbackDays = _validatedLookbackDays();
+    if (lookbackDays == null) {
+      return;
+    }
+
+    try {
+      await _settingsService.saveSettings({
+        SettingsService.keyLookbackDays: lookbackDays,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+      }
+    }
+  }
+
+  Future<void> _saveGcjCorrectionEnabled(bool value) async {
+    if (value == _gcjCorrectionEnabled &&
+        !_savingGcjCorrectionEnabled &&
+        _pendingGcjCorrectionEnabled == null) {
+      return;
+    }
+
+    setState(() => _gcjCorrectionEnabled = value);
+
+    if (_savingGcjCorrectionEnabled) {
+      _pendingGcjCorrectionEnabled = value;
+      return;
+    }
+
+    _savingGcjCorrectionEnabled = true;
+    bool valueToPersist = value;
+
+    while (true) {
+      _pendingGcjCorrectionEnabled = null;
+
+      try {
+        await _settingsService.saveSettings({
+          SettingsService.keyGcjCorrectionEnabled: valueToPersist.toString(),
+        });
+        _confirmedGcjCorrectionEnabled = valueToPersist;
+      } catch (e) {
+        _savingGcjCorrectionEnabled = false;
+        _pendingGcjCorrectionEnabled = null;
+        if (mounted) {
+          setState(
+            () => _gcjCorrectionEnabled = _confirmedGcjCorrectionEnabled,
+          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('设置保存失败: $e')));
+        }
+        return;
+      }
+
+      final bool? pendingValue = _pendingGcjCorrectionEnabled;
+      if (pendingValue == null || pendingValue == valueToPersist) {
+        _savingGcjCorrectionEnabled = false;
+        return;
+      }
+
+      valueToPersist = pendingValue;
+    }
+  }
+
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
+  String? _validatedLookbackDays() {
     final String lookbackDays = _controllers[SettingsService.keyLookbackDays]!
         .text
         .trim();
@@ -180,21 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('请输入大于 0 的整数天数')));
       }
-      return;
+      return null;
     }
-
-    await _settingsService.saveSettings({
-      SettingsService.keyLookbackDays: lookbackDays,
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('同步设置已保存')));
-    }
-  }
-
-  void _dismissKeyboard() {
-    FocusScope.of(context).unfocus();
+    return lookbackDays;
   }
 
   Future<void> _authorizeStrava() async {
@@ -215,8 +338,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    await _save();
+    final bool saved = await _save();
     if (!mounted) return;
+    if (!saved) return;
 
     final navigator = Navigator.of(context);
 
@@ -369,6 +493,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('上传前将 GCJ-02 转为 WGS84'),
+            subtitle: const Text('仅在来源轨迹偏移且确认使用 GCJ-02 时开启'),
+            value: _gcjCorrectionEnabled,
+            onChanged: _saveGcjCorrectionEnabled,
+          ),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(

@@ -44,6 +44,37 @@ void main() {
       expect(result, contains('Strava 服务暂时不可用'));
       expect(result, isNot(contains('可以试试先从 OneLap/顽鹿导出 FIT')));
     });
+
+    test(
+      'returns coordinate conversion message for raw conversion failures',
+      () {
+        const String raw = '坐标转换失败 (demo.fit): invalid coordinate payload';
+
+        final String result = SyncFailureFormatter.toUserMessage(raw);
+
+        expect(result, contains('FIT 文件在上传前转换失败'));
+        expect(result, isNot(contains('Strava 上传失败')));
+      },
+    );
+
+    test('handles filenames containing closing parentheses', () {
+      const String raw = '坐标转换失败 (ride (1).fit): invalid coordinate payload';
+
+      final String result = SyncFailureFormatter.toUserMessage(raw);
+
+      expect(result, contains('坐标转换失败（ride (1).fit）'));
+      expect(result, contains('FIT 文件在上传前转换失败'));
+    });
+
+    test('does not swallow detail delimiter text into filename', () {
+      const String raw =
+          '上传失败 (ride (1).fit): StravaRetriableError 503): retry later';
+
+      final String result = SyncFailureFormatter.toUserMessage(raw);
+
+      expect(result, contains('上传失败（ride (1).fit）'));
+      expect(result, contains('Strava 服务暂时不可用'));
+    });
   });
 
   group('SyncFailureFormatter.buildClipboardText', () {

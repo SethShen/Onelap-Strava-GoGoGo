@@ -2,7 +2,7 @@ import '../models/sync_summary.dart';
 
 class SyncFailureFormatter {
   static final RegExp _failurePattern = RegExp(
-    r'^(下载失败|上传失败) \(([^)]+)\):\s*(.*)$',
+    r'^(下载失败|上传失败|坐标转换失败) \((.+?)\):\s*(.*)$',
   );
   static const String _downloadFitShareHint =
       '可以试试先从 OneLap/顽鹿导出 FIT，再分享到顽爪爪进行同步。';
@@ -23,6 +23,10 @@ class SyncFailureFormatter {
         return '下载失败（$filename）：OneLap 下载超时，请检查网络后重试。$_downloadFitShareHint';
       }
       return '下载失败（$filename）：OneLap 文件下载失败，请稍后重试。$_downloadFitShareHint';
+    }
+
+    if (kind == '坐标转换失败') {
+      return '坐标转换失败（$filename）：FIT 文件在上传前转换失败，请稍后重试。';
     }
 
     if (detail.contains('5xx') ||

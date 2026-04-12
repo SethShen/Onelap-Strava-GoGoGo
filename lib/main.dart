@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'services/fit_coordinate_rewrite_service.dart';
 import 'services/share_navigation_coordinator.dart';
+import 'services/shared_fit_upload_service.dart';
 import 'screens/home_screen.dart';
 
 void main() {
@@ -16,8 +18,13 @@ class OneLapStravaApp extends StatefulWidget {
 
 class _OneLapStravaAppState extends State<OneLapStravaApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  late final SharedFitUploadService _sharedFitUploadService =
+      SharedFitUploadService(rewriteService: FitCoordinateRewriteService());
   late final ShareNavigationCoordinator _shareNavigationCoordinator =
-      ShareNavigationCoordinator(navigatorKey: _navigatorKey);
+      ShareNavigationCoordinator(
+        navigatorKey: _navigatorKey,
+        uploadService: _sharedFitUploadService,
+      );
 
   @override
   void initState() {
