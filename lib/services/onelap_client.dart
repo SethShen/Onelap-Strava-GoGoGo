@@ -360,12 +360,30 @@ class OneLapClient {
       final String value = candidate?.trim() ?? '';
       if (value.isEmpty) continue;
       if (value.startsWith('geo/')) return value;
+      if (_isOtmMatchIdentifier(value)) return value;
       final Uri? uri = Uri.tryParse(value);
       if (uri != null && uri.path.startsWith('/geo/')) {
         return uri.path.replaceFirst(RegExp(r'^/'), '');
       }
     }
     return null;
+  }
+
+  bool _isOtmMatchIdentifier(String value) {
+    if (!RegExp(
+      r'^MATCH_\d{6,}-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-log\.st$',
+    ).hasMatch(value)) {
+      return false;
+    }
+    if (value.contains(RegExp(r'\s'))) return false;
+    if (value.contains('/')) return false;
+    if (value.contains('?') || value.contains('#')) return false;
+
+    final Uri? uri = Uri.tryParse(value);
+    if (uri != null && uri.hasScheme) return false;
+    if (value.startsWith('/')) return false;
+
+    return true;
   }
 
   Future<String> _fetchOtmToken() async {

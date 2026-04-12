@@ -529,5 +529,250 @@ void main() {
       expect(requests, contains(otmFitContentUrl));
       expect(await downloaded.readAsBytes(), <int>[8, 9, 10]);
     });
+
+    test(
+      'falls back to OTM fit content download for MATCH identifiers after standard URLs fail',
+      () async {
+        final List<String> requests = <String>[];
+        final String matchIdentifier =
+            'MATCH_677767-2026-04-09-21-09-29-log.st';
+        final String otmFitContentUrl =
+            'https://otm.onelap.cn/api/otm/ride_record/analysis/fit_content/'
+            '${base64.encode(utf8.encode(matchIdentifier))}';
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final String url = options.uri.toString();
+          requests.add(url);
+
+          if (url == 'http://example.com/api/login') {
+            return ResponseBody.fromString(
+              jsonEncode({
+                'code': 200,
+                'data': [
+                  {'token': 'otm-token-123'},
+                ],
+              }),
+              200,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/json'],
+              },
+            );
+          }
+
+          if (url == 'http://fits.rfsvr.net/correct.fit?token=abc' ||
+              url == 'http://example.com/not-match.fit' ||
+              url == 'http://example.com/not-match-alt.fit' ||
+              url == 'http://example.com/geo/20260329/not-used.fit' ||
+              url == 'http://u.onelap.cn/geo/20260329/not-used.fit' ||
+              url == 'https://u.onelap.cn/geo/20260329/not-used.fit' ||
+              url == 'https://www.onelap.cn/geo/20260329/not-used.fit') {
+            return ResponseBody.fromBytes(
+              <int>[],
+              HttpStatus.notFound,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          if (url == otmFitContentUrl) {
+            return ResponseBody.fromBytes(
+              <int>[7, 6, 5, 4],
+              HttpStatus.ok,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          return ResponseBody.fromString('not found', 404);
+        });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-otm-match-fallback-',
+        );
+
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
+
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
+
+        final File downloaded = await client.downloadFit(
+          'http://fits.rfsvr.net/correct.fit?token=abc',
+          'demo.fit',
+          outputDir,
+          activity: const OneLapActivity(
+            activityId: '677767',
+            startTime: '2026-04-09T21:09:29',
+            fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            recordKey: 'fileKey:MATCH_677767-2026-04-09-21-09-29-log.st',
+            sourceFilename: 'demo.fit',
+            rawFitUrl: 'not-match.fit',
+            rawFitUrlAlt: 'not-match-alt.fit',
+            rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+            rawFileKey: 'MATCH_677767-2026-04-09-21-09-29-log.st',
+          ),
+        );
+
+        expect(requests, contains(otmFitContentUrl));
+        expect(await downloaded.readAsBytes(), <int>[7, 6, 5, 4]);
+      },
+    );
+
+    test(
+      'does not treat unsupported identifiers as OTM fit content fallback candidates',
+      () async {
+        final List<String> requests = <String>[];
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final String url = options.uri.toString();
+          requests.add(url);
+
+          if (url == 'http://fits.rfsvr.net/correct.fit?token=abc' ||
+              url == 'http://example.com/not-match.fit' ||
+              url == 'http://example.com/not-match-alt.fit') {
+            return ResponseBody.fromBytes(
+              <int>[],
+              HttpStatus.notFound,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          return ResponseBody.fromString('not found', 404);
+        });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-otm-unsupported-fallback-',
+        );
+
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
+
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
+
+        await expectLater(
+          client.downloadFit(
+            'http://fits.rfsvr.net/correct.fit?token=abc',
+            'demo.fit',
+            outputDir,
+            activity: const OneLapActivity(
+              activityId: '1',
+              startTime: '2026-04-09T21:09:29',
+              fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+              recordKey: 'fileKey:unsupported-fit-id.st',
+              sourceFilename: 'demo.fit',
+              rawFitUrl: 'not-match.fit',
+              rawFitUrlAlt: 'not-match-alt.fit',
+              rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+              rawFileKey: 'unsupported-fit-id.st',
+            ),
+          ),
+          throwsA(
+            isA<Exception>().having(
+              (Exception error) => error.toString(),
+              'message',
+              contains('OTM fallback requires fileKey or fitUrl path'),
+            ),
+          ),
+        );
+
+        expect(requests, isNot(contains('http://example.com/api/login')));
+        expect(
+          requests.where((String url) => url.contains('/fit_content/')),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'does not treat malformed MATCH identifiers as OTM fit content fallback candidates',
+      () async {
+        final List<String> requests = <String>[];
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final String url = options.uri.toString();
+          requests.add(url);
+
+          if (url == 'http://fits.rfsvr.net/correct.fit?token=abc' ||
+              url == 'http://example.com/not-match.fit' ||
+              url == 'http://example.com/not-match-alt.fit' ||
+              url == 'http://example.com/MATCH_placeholder') {
+            return ResponseBody.fromBytes(
+              <int>[],
+              HttpStatus.notFound,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
+
+          return ResponseBody.fromString('not found', 404);
+        });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-otm-malformed-match-fallback-',
+        );
+
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
+
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
+
+        await expectLater(
+          client.downloadFit(
+            'http://fits.rfsvr.net/correct.fit?token=abc',
+            'demo.fit',
+            outputDir,
+            activity: const OneLapActivity(
+              activityId: '1',
+              startTime: '2026-04-09T21:09:29',
+              fitUrl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+              recordKey: 'fileKey:MATCH_placeholder',
+              sourceFilename: 'demo.fit',
+              rawFitUrl: 'not-match.fit',
+              rawFitUrlAlt: 'not-match-alt.fit',
+              rawDurl: 'http://fits.rfsvr.net/correct.fit?token=abc',
+              rawFileKey: 'MATCH_placeholder',
+            ),
+          ),
+          throwsA(
+            isA<Exception>().having(
+              (Exception error) => error.toString(),
+              'message',
+              contains('OTM fallback requires fileKey or fitUrl path'),
+            ),
+          ),
+        );
+
+        expect(requests, isNot(contains('http://example.com/api/login')));
+        expect(
+          requests.where((String url) => url.contains('/fit_content/')),
+          isEmpty,
+        );
+      },
+    );
   });
 }
