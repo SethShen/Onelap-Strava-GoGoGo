@@ -80,7 +80,7 @@ class _FakeStateStore extends StateStore {
   }
 
   @override
-  Future<void> markSynced(String fingerprint, int stravaActivityId) async {
+  Future<void> markSynced(String fingerprint, int? stravaActivityId) async {
     markedFingerprint = fingerprint;
     markedActivityId = stravaActivityId;
   }
@@ -94,7 +94,7 @@ class _FakeFitCoordinateRewriteService extends FitCoordinateRewriteService {
   File? receivedFile;
 
   @override
-  Future<File> rewrite(File inputFile) async {
+  Future<File> rewrite(File inputFile, {RewriteOptions? options}) async {
     receivedFile = inputFile;
     if (error != null) {
       throw error!;
