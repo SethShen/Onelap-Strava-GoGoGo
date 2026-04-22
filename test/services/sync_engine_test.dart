@@ -4,15 +4,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onelap_strava_sync/models/onelap_activity.dart';
-import 'package:onelap_strava_sync/models/sync_record.dart';
-import 'package:onelap_strava_sync/models/sync_result_banner.dart';
-import 'package:onelap_strava_sync/models/sync_summary.dart';
 import 'package:onelap_strava_sync/services/fit_coordinate_rewrite_service.dart';
 import 'package:onelap_strava_sync/services/onelap_client.dart';
 import 'package:onelap_strava_sync/services/state_store.dart';
 import 'package:onelap_strava_sync/services/strava_client.dart';
 import 'package:onelap_strava_sync/services/sync_engine.dart';
-import 'package:onelap_strava_sync/services/xingzhe_client.dart';
 
 class _FakeOneLapClient extends OneLapClient {
   _FakeOneLapClient({required this.activities, required this.downloadedFile})
@@ -76,52 +72,17 @@ class _FakeStateStore extends StateStore {
   String? markedFingerprint;
   int? markedActivityId;
   bool synced = false;
-  final Map<String, bool> uploadedPlatforms = <String, bool>{};
 
   @override
-  Future<bool> isAlreadyUploaded(String fingerprint, String platform) async {
+  Future<bool> isSynced(String fingerprint) async {
     checkedFingerprint = fingerprint;
-    return uploadedPlatforms[platform] ?? synced;
+    return synced;
   }
 
   @override
-  Future<bool> isDedupeKey(String dedupeKey) async => false;
-
-  @override
-  Future<String?> getDedupeKeyFingerprint(String dedupeKey) async => null;
-
-  @override
-  Future<void> markPlatformSynced(
-    String fingerprint,
-    String platform,
-    int? remoteActivityId,
-  ) async {
+  Future<void> markSynced(String fingerprint, int? stravaActivityId) async {
     markedFingerprint = fingerprint;
-    markedActivityId = remoteActivityId;
-  }
-
-  @override
-  Future<void> markDedupeKey(String dedupeKey, String fingerprint) async {}
-
-  @override
-  Future<void> saveSyncRecords(List<SyncRecord> records) async {}
-}
-
-class _FakeXingzheClient extends XingzheClient {
-  _FakeXingzheClient()
-    : super(username: 'xingzhe-user', password: 'xingzhe-pass');
-
-  @override
-  Future<int> uploadFit(File fitFile, {int retries = 3}) async {
-    return 7;
-  }
-
-  @override
-  Future<Map<String, dynamic>> pollUpload(
-    int uploadId, {
-    int maxAttempts = 10,
-  }) async {
-    return <String, dynamic>{'activity_id': 0, 'error': 'bad password'};
+    markedActivityId = stravaActivityId;
   }
 }
 
@@ -336,53 +297,10 @@ void main() {
 
       expect(summary.failed, 1);
       expect(summary.success, 0);
-      expect(summary.failureReasons, isEmpty);
-      expect(summary.stravaFailed, 1);
-      expect(summary.stravaFailures, hasLength(1));
-      expect(summary.stravaFailures.single.error, '坐标转换失败');
+      expect(summary.failureReasons, <String>[
+        '坐标转换失败 (activity.fit): bad coordinate',
+      ]);
       expect(stravaClient.uploadedFile, isNull);
-    });
-
-    test('tracks platform deduped counts separately from failures', () async {
-      final Directory tempDir = await Directory.systemTemp.createTemp(
-        'sync-engine-platform-deduped-',
-      );
-      final File originalFile = File('${tempDir.path}/activity.fit');
-      await originalFile.writeAsBytes(<int>[1, 2, 3]);
-
-      addTearDown(() async {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      });
-
-      final _FakeStateStore stateStore = _FakeStateStore()
-        ..uploadedPlatforms['strava'] = true;
-      final SyncEngine engine = SyncEngine(
-        oneLapClient: _FakeOneLapClient(
-          activities: <OneLapActivity>[_activity()],
-          downloadedFile: originalFile,
-        ),
-        stravaClient: _FakeStravaClient(),
-        xingzheClient: _FakeXingzheClient(),
-        stateStore: stateStore,
-        uploadToStrava: true,
-        uploadToXingzhe: true,
-      );
-
-      final SyncSummary summary = await engine.runOnce();
-      final SyncResultBanner banner = SyncResultBanner.fromSyncSummary(summary);
-
-      expect(summary.success, 0);
-      expect(summary.failed, 1);
-      expect(summary.stravaSuccess, 0);
-      expect(summary.stravaFailed, 0);
-      expect(summary.stravaDeduped, 1);
-      expect(summary.xingzheSuccess, 0);
-      expect(summary.xingzheFailed, 1);
-      expect(summary.xingzheDeduped, 0);
-      expect(banner.stravaDeduped, 1);
-      expect(banner.xingzheFailed, 1);
     });
   });
 }
