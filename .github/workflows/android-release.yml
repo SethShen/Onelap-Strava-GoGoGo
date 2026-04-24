@@ -11,11 +11,10 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: read
-
 jobs:
   build:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Resolve build ref and release versioning
@@ -136,3 +135,55 @@ jobs:
           name: android-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
+
+  publish:
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-apk
+          path: release-artifact
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release
+
+          artifact_path="release-artifact/app-release.apk"
+          if [[ ! -f "$artifact_path" ]]; then
+            downloaded_files=(release-artifact/*)
+            if [[ ${#downloaded_files[@]} -ne 1 || ! -f "${downloaded_files[0]}" ]]; then
+              echo "Expected exactly one downloaded APK artifact" >&2
+              exit 1
+            fi
+            artifact_path="${downloaded_files[0]}"
+          fi
+
+          cp "$artifact_path" "release/app-release.apk"
+
+          cat <<'EOF' > release/release-notes.md
+          ## 更新内容
+          - 请补充本次版本说明
+          EOF
+
+      - name: Create or update GitHub release
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" release/app-release.apk --clobber
+          else
+            gh release create "$TAG_NAME" release/app-release.apk --title "$TAG_NAME" --notes-file release/release-notes.md
+          fi
