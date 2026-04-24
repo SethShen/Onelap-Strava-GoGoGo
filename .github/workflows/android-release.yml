@@ -18,9 +18,90 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve build ref and release versioning
+        id: resolve_ref
+        shell: bash
+        env:
+          WORKFLOW_EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.ref }}
+          WORKFLOW_REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_REF_TYPE: ${{ github.ref_type }}
+          DISPATCH_INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          checkout_ref="$WORKFLOW_REF"
+          derived_versioning_active=false
+          build_name=
+          build_number=
+          version_ref=
+          invalid_ref=
+
+          if [[ "$WORKFLOW_EVENT_NAME" == "push" && "$WORKFLOW_REF_TYPE" == "tag" ]]; then
+            version_ref="$WORKFLOW_REF_NAME"
+            invalid_ref="$WORKFLOW_REF_NAME"
+            checkout_ref="$WORKFLOW_REF"
+          elif [[ "$WORKFLOW_EVENT_NAME" == "workflow_dispatch" ]]; then
+            raw_ref="$DISPATCH_INPUT_REF"
+
+            if [[ -z "$raw_ref" ]]; then
+              checkout_ref="$WORKFLOW_REF"
+            elif [[ "$raw_ref" == "refs/tags" || "$raw_ref" == "refs/tags/" ]]; then
+              echo "Invalid release tag ref: $raw_ref" >&2
+              exit 1
+            elif [[ "$raw_ref" =~ ^refs/tags/ ]]; then
+              version_ref="${raw_ref#refs/tags/}"
+              invalid_ref="$raw_ref"
+              checkout_ref="$raw_ref"
+            elif [[ "$raw_ref" =~ ^v ]]; then
+              version_ref="$raw_ref"
+              invalid_ref="$raw_ref"
+              checkout_ref="refs/tags/$raw_ref"
+            else
+              checkout_ref="$raw_ref"
+            fi
+
+            if [[ -n "$version_ref" && ! "$version_ref" =~ ^v ]]; then
+              echo "Invalid release tag ref: $invalid_ref" >&2
+              exit 1
+            fi
+          fi
+
+          if [[ -n "$version_ref" ]]; then
+            if [[ ! "$version_ref" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "Invalid release tag ref: $invalid_ref" >&2
+              exit 1
+            fi
+
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+
+            if [[ ( "$major" != "0" && "$major" =~ ^0 ) || ( "$minor" != "0" && "$minor" =~ ^0 ) || ( "$patch" != "0" && "$patch" =~ ^0 ) ]]; then
+              echo "Invalid release tag ref: $invalid_ref" >&2
+              exit 1
+            fi
+
+            if (( major > 2099 || minor > 999 || patch > 999 || (major == 0 && minor == 0 && patch == 0) )); then
+              echo "Invalid release tag ref: $invalid_ref" >&2
+              exit 1
+            fi
+
+            derived_versioning_active=true
+            build_name="$major.$minor.$patch"
+            build_number="$((major * 1000000 + minor * 1000 + patch))"
+          fi
+
+          {
+            echo "checkout_ref=$checkout_ref"
+            echo "derived_versioning_active=$derived_versioning_active"
+            echo "build_name=$build_name"
+            echo "build_number=$build_number"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ steps.resolve_ref.outputs.checkout_ref }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -37,7 +118,17 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release --dart-define=FLUTTER_IMPELLER_ENABLED=false
+        shell: bash
+        env:
+          DERIVED_VERSIONING_ACTIVE: ${{ steps.resolve_ref.outputs.derived_versioning_active }}
+          BUILD_NAME: ${{ steps.resolve_ref.outputs.build_name }}
+          BUILD_NUMBER: ${{ steps.resolve_ref.outputs.build_number }}
+        run: |
+          if [[ "$DERIVED_VERSIONING_ACTIVE" == "true" ]]; then
+            flutter build apk --release --dart-define=FLUTTER_IMPELLER_ENABLED=false --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER"
+          else
+            flutter build apk --release --dart-define=FLUTTER_IMPELLER_ENABLED=false
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
