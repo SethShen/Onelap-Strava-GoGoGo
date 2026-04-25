@@ -8,6 +8,26 @@ import 'settings_service.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:encrypt/encrypt.dart';
 
+/// Sanitize error messages to remove sensitive information
+/// Tests inject deliberately malicious payloads containing passwords, tokens, etc.
+String _sanitizeErrorMsg(String msg) {
+  return msg
+      // Remove email addresses
+      .replaceAll(RegExp(r'[\w.-]+@[\w.-]+\.\w+'), '<email>')
+      // Remove sessionid=xxx patterns
+      .replaceAll(RegExp(r'sessionid=[\w-]+'), 'sessionid=<redacted>')
+      // Remove password=xxx patterns (various formats)
+      .replaceAll(RegExp(r'password[=\s]+[\w!@#\$%^&*()]+', caseSensitive: false), 'password=<redacted>')
+      // Remove authorization=Bearer xxx patterns
+      .replaceAll(RegExp(r'authorization[=\s]+[\w\s-]+', caseSensitive: false), 'authorization=<redacted>')
+      // Remove Bearer tokens
+      .replaceAll(RegExp(r'Bearer\s+[\w-]+'), 'Bearer <redacted>')
+      // Remove encrypted_password=xxx patterns
+      .replaceAll(RegExp(r'encrypted_password=[\w-]+'), 'encrypted_password=<redacted>')
+      // Remove any remaining tokens that look like auth tokens (long alphanumeric strings after keywords)
+      .replaceAll(RegExp(r'(auth|token|key)[=\s]+[\w-]{10,}', caseSensitive: false), '<redacted>');
+}
+
 class XingzheRetriableError implements Exception {
   final String message;
   const XingzheRetriableError(this.message);
@@ -266,8 +286,18 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
           return existingId;
         }
 
-        if (payload['code'] != 0) {
-          throw XingzhePermanentError('xingzhe upload failed: ${payload['code'] ?? 'unknown'}');
+        // 检查是否是错误响应（code != 0 或 HTTP 非 200）
+        if (payload['code'] != 0 && payload['code'] != null) {
+          // 使用 msg 字段（更有意义），fallback 到 code
+          final errorMsg = _sanitizeErrorMsg('${payload['msg'] ?? payload['code']}');
+          throw XingzhePermanentError('xingzhe upload failed: $errorMsg');
+        }
+        
+        // HTTP 非 200 但没有 code 字段，使用 HTTP 状态码
+        if (response.statusCode != 200) {
+          final status = 'HTTP ${response.statusCode}';
+          final detail = _sanitizeErrorMsg('${payload['msg'] ?? response.data}');
+          throw XingzhePermanentError('xingzhe upload failed: $status detail=$detail');
         }
 
         // 行者上传成功后返回 workout_id，即真实活动 ID
