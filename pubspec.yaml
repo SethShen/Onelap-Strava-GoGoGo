@@ -44,8 +44,6 @@ dependencies:
   url_launcher: ^6.3.0
   package_info_plus: ^8.0.0
   shared_preferences: ^2.3.0
-  pointycastle: ^3.9.1
-  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

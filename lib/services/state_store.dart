@@ -148,11 +148,22 @@ class StateStore {
     final history = (data['history'] as List).cast<Map<String, dynamic>>();
 
     for (final record in records) {
-      // Remove existing record if fingerprint already exists (re-upload case)
-      // Then insert at front so latest sync shows first
-      final existingIdx = history.indexWhere(
-        (r) => r['fingerprint'] == record.fingerprint,
-      );
+      // Primary key: fingerprint if non-empty, else fallback identity
+      final fp = record.fingerprint;
+      final fallbackId = '${record.sourceFilename}_${record.startTime}';
+
+      int existingIdx = -1;
+      if (fp.isNotEmpty) {
+        // Fingerprint match takes precedence
+        existingIdx = history.indexWhere((r) => r['fingerprint'] == fp);
+      }
+      if (existingIdx < 0) {
+        // Fallback: match by sourceFilename + startTime
+        existingIdx = history.indexWhere(
+          (r) => '${r['sourceFilename']}_${r['startTime']}' == fallbackId,
+        );
+      }
+
       if (existingIdx >= 0) {
         history.removeAt(existingIdx);
       }
@@ -189,16 +200,20 @@ class StateStore {
       return true;
     }).toList();
 
-    // Parse and deduplicate by fingerprint: keep latest synced record for each,
-    // then merge platform results across all records of the same fingerprint
+    // Parse and deduplicate:
+    // - Non-empty fingerprint: merge by fingerprint
+    // - Empty fingerprint: keep distinct (no merge), use fallback key to avoid collisions
     final Map<String, SyncRecord> merged = {};
     for (final r in filtered) {
       final record = SyncRecord.fromJson(r);
       final fp = record.fingerprint;
-      if (merged.containsKey(fp)) {
-        merged[fp] = merged[fp]!.mergeWith(record);
+      final key = fp.isNotEmpty
+          ? fp
+          : '${record.sourceFilename}_${record.startTime}_${record.syncedAt.toIso8601String()}';
+      if (merged.containsKey(key)) {
+        merged[key] = merged[key]!.mergeWith(record);
       } else {
-        merged[fp] = record;
+        merged[key] = record;
       }
     }
 

@@ -4,18 +4,16 @@ import 'package:onelap_strava_sync/models/sync_summary.dart';
 
 void main() {
   group('SyncResultBanner', () {
-    test('preserves per-platform deduped counts from summary', () {
+    test('preserves per-platform success/failed counts from summary', () {
       final SyncSummary summary = SyncSummary(
-        fetched: 1,
+        fetched: 2,
         deduped: 0,
-        success: 0,
+        success: 1,
         failed: 1,
-        stravaSuccess: 0,
+        stravaSuccess: 1,
         stravaFailed: 0,
-        stravaDeduped: 1,
         xingzheSuccess: 0,
         xingzheFailed: 1,
-        xingzheDeduped: 0,
       );
 
       final SyncResultBanner banner = SyncResultBanner.fromSyncSummary(summary);
@@ -23,28 +21,26 @@ void main() {
         banner.toJson(),
       );
 
-      expect(restored.stravaDeduped, 1);
-      expect(restored.xingzheDeduped, 0);
+      expect(restored.stravaSuccess, 1);
       expect(restored.stravaFailed, 0);
+      expect(restored.xingzheSuccess, 0);
       expect(restored.xingzheFailed, 1);
     });
 
-    test('keeps a platform visible when it only has deduped results', () {
+    test('keeps a platform visible when it has results', () {
       final SyncSummary summary = SyncSummary(
-        fetched: 1,
+        fetched: 2,
         deduped: 0,
-        success: 0,
+        success: 1,
         failed: 1,
-        stravaDeduped: 1,
+        stravaSuccess: 1,
         xingzheFailed: 1,
       );
 
       final SyncResultBanner banner = SyncResultBanner.fromSyncSummary(summary);
 
       expect(
-        banner.stravaSuccess > 0 ||
-            banner.stravaFailed > 0 ||
-            banner.stravaDeduped > 0,
+        banner.stravaSuccess > 0 || banner.stravaFailed > 0,
         isTrue,
       );
     });

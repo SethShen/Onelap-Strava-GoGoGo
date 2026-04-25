@@ -125,7 +125,7 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
         ),
       );
     } on DioException catch (e) {
-      throw XingzhePermanentError('行者登录失败: ${e.response?.statusCode} ${e.response?.data}');
+      throw XingzhePermanentError('行者登录失败: ${e.response?.statusCode ?? 'network error'}');
     }
 
     if (response.statusCode != 200) {
@@ -267,7 +267,7 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
         }
 
         if (payload['code'] != 0) {
-          throw XingzhePermanentError('xingzhe upload failed: ${payload['msg'] ?? '未知错误'}');
+          throw XingzhePermanentError('xingzhe upload failed: ${payload['code'] ?? 'unknown'}');
         }
 
         // 行者上传成功后返回 workout_id，即真实活动 ID
