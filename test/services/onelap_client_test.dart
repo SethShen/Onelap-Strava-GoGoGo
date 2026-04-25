@@ -97,14 +97,8 @@ void main() {
               'code': 200,
               'data': {
                 'list': [
-                  {
-                    'id': 1,
-                    'start_riding_time': '2026-03-01T10:00:00',
-                  },
-                  {
-                    'id': 2,
-                    'start_riding_time': '2026-03-29T10:00:00',
-                  },
+                  {'id': 1, 'start_riding_time': '2026-03-01T10:00:00'},
+                  {'id': 2, 'start_riding_time': '2026-03-29T10:00:00'},
                 ],
               },
             }),
@@ -180,10 +174,13 @@ void main() {
             'http://u.onelap.cn/api/otm/ride_record/list') {
           callCount++;
           if (callCount == 1) {
-            return ResponseBody.fromString('login required', 401,
-                headers: <String, List<String>>{
-                  Headers.contentTypeHeader: <String>['text/html'],
-                });
+            return ResponseBody.fromString(
+              'login required',
+              401,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['text/html'],
+              },
+            );
           }
           return ResponseBody.fromString(
             jsonEncode({
@@ -204,7 +201,9 @@ void main() {
           return ResponseBody.fromString(
             jsonEncode({
               'code': 200,
-              'data': [{'token': 'test-token'}],
+              'data': [
+                {'token': 'test-token'},
+              ],
             }),
             200,
             headers: <String, List<String>>{
@@ -280,10 +279,7 @@ void main() {
         if (options.uri.toString() ==
             'http://u.onelap.cn/api/otm/ride_record/analysis/99') {
           return ResponseBody.fromString(
-            jsonEncode({
-              'code': 200,
-              'data': {},
-            }),
+            jsonEncode({'code': 200, 'data': {}}),
             200,
             headers: <String, List<String>>{
               Headers.contentTypeHeader: <String>['application/json'],
@@ -361,7 +357,9 @@ void main() {
         }
 
         // fit_content endpoint
-        final encodedFileKey = base64.encode(utf8.encode('geo/20260329/ride.fit'));
+        final encodedFileKey = base64.encode(
+          utf8.encode('geo/20260329/ride.fit'),
+        );
         final fitContentUrl =
             'http://u.onelap.cn/api/otm/ride_record/analysis/fit_content/$encodedFileKey';
         if (url == fitContentUrl) {
@@ -377,8 +375,9 @@ void main() {
         return ResponseBody.fromString('not found', 404);
       });
 
-      final Directory outputDir =
-          await Directory.systemTemp.createTemp('onelap-client-download-');
+      final Directory outputDir = await Directory.systemTemp.createTemp(
+        'onelap-client-download-',
+      );
       addTearDown(() async {
         if (await outputDir.exists()) {
           await outputDir.delete(recursive: true);
@@ -409,7 +408,9 @@ void main() {
       expect(await downloaded.readAsBytes(), <int>[1, 2, 3, 4]);
       // Should have called getActivityDetail and then fit_content
       expect(
-          requests, contains('http://u.onelap.cn/api/otm/ride_record/analysis/42'));
+        requests,
+        contains('http://u.onelap.cn/api/otm/ride_record/analysis/42'),
+      );
       expect(requests.any((u) => u.contains('/fit_content/')), isTrue);
     });
 
@@ -419,8 +420,9 @@ void main() {
         return ResponseBody.fromString('not found', 404);
       });
 
-      final Directory outputDir =
-          await Directory.systemTemp.createTemp('onelap-client-no-url-');
+      final Directory outputDir = await Directory.systemTemp.createTemp(
+        'onelap-client-no-url-',
+      );
       addTearDown(() async {
         if (await outputDir.exists()) {
           await outputDir.delete(recursive: true);
@@ -440,80 +442,82 @@ void main() {
       );
     });
 
-    test('falls back to fitUrl when activity detail returns null fileKey',
-        () async {
-      final List<String> requests = <String>[];
-      final Dio dio = Dio();
-      dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
-        final url = options.uri.toString();
-        requests.add(url);
+    test(
+      'falls back to fitUrl when activity detail returns null fileKey',
+      () async {
+        final List<String> requests = <String>[];
+        final Dio dio = Dio();
+        dio.httpClientAdapter = _FakeHttpClientAdapter((options) async {
+          final url = options.uri.toString();
+          requests.add(url);
 
-        if (url == 'http://u.onelap.cn/api/otm/ride_record/analysis/42') {
-          return ResponseBody.fromString(
-            jsonEncode({
-              'code': 200,
-              'data': {
-                'ridingRecord': {
-                  'durl': '',
-                  'fileKey': '',
+          if (url == 'http://u.onelap.cn/api/otm/ride_record/analysis/42') {
+            return ResponseBody.fromString(
+              jsonEncode({
+                'code': 200,
+                'data': {
+                  'ridingRecord': {'durl': '', 'fileKey': ''},
                 },
+              }),
+              200,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/json'],
               },
-            }),
-            200,
-            headers: <String, List<String>>{
-              Headers.contentTypeHeader: <String>['application/json'],
-            },
-          );
-        }
+            );
+          }
 
-        if (url == 'http://example.com/fallback.fit') {
-          return ResponseBody.fromBytes(
-            <int>[5, 6, 7],
-            200,
-            headers: <String, List<String>>{
-              Headers.contentTypeHeader: <String>['application/octet-stream'],
-            },
-          );
-        }
+          if (url == 'http://example.com/fallback.fit') {
+            return ResponseBody.fromBytes(
+              <int>[5, 6, 7],
+              200,
+              headers: <String, List<String>>{
+                Headers.contentTypeHeader: <String>['application/octet-stream'],
+              },
+            );
+          }
 
-        return ResponseBody.fromString('not found', 404);
-      });
+          return ResponseBody.fromString('not found', 404);
+        });
 
-      final Directory outputDir =
-          await Directory.systemTemp.createTemp('onelap-client-fallback-');
-      addTearDown(() async {
-        if (await outputDir.exists()) {
-          await outputDir.delete(recursive: true);
-        }
-      });
+        final Directory outputDir = await Directory.systemTemp.createTemp(
+          'onelap-client-fallback-',
+        );
+        addTearDown(() async {
+          if (await outputDir.exists()) {
+            await outputDir.delete(recursive: true);
+          }
+        });
 
-      final OneLapClient client = OneLapClient(
-        baseUrl: 'http://example.com',
-        username: 'unused',
-        password: 'unused',
-        dio: dio,
-      );
+        final OneLapClient client = OneLapClient(
+          baseUrl: 'http://example.com',
+          username: 'unused',
+          password: 'unused',
+          dio: dio,
+        );
 
-      final File downloaded = await client.downloadFit(
-        'http://example.com/fallback.fit',
-        'fallback.fit',
-        outputDir,
-        activity: const OneLapActivity(
-          activityId: '42',
-          startTime: '2026-03-29T10:00:00',
-          fitUrl: 'http://example.com/fallback.fit',
-          recordKey: '42',
-          sourceFilename: 'fallback.fit',
-        ),
-      );
+        final File downloaded = await client.downloadFit(
+          'http://example.com/fallback.fit',
+          'fallback.fit',
+          outputDir,
+          activity: const OneLapActivity(
+            activityId: '42',
+            startTime: '2026-03-29T10:00:00',
+            fitUrl: 'http://example.com/fallback.fit',
+            recordKey: '42',
+            sourceFilename: 'fallback.fit',
+          ),
+        );
 
-      expect(await downloaded.exists(), isTrue);
-      expect(await downloaded.readAsBytes(), <int>[5, 6, 7]);
-      // Should have tried getActivityDetail first, then fell back to fitUrl
-      expect(
-          requests, contains('http://u.onelap.cn/api/otm/ride_record/analysis/42'));
-      expect(requests, contains('http://example.com/fallback.fit'));
-    });
+        expect(await downloaded.exists(), isTrue);
+        expect(await downloaded.readAsBytes(), <int>[5, 6, 7]);
+        // Should have tried getActivityDetail first, then fell back to fitUrl
+        expect(
+          requests,
+          contains('http://u.onelap.cn/api/otm/ride_record/analysis/42'),
+        );
+        expect(requests, contains('http://example.com/fallback.fit'));
+      },
+    );
   });
 
   group('OneLapClient.login', () {
@@ -570,10 +574,7 @@ void main() {
         dio: dio,
       );
 
-      await expectLater(
-        client.login(),
-        throwsA(isA<Exception>()),
-      );
+      await expectLater(client.login(), throwsA(isA<Exception>()));
     });
   });
 }

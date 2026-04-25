@@ -39,10 +39,7 @@ void main() {
 
       final SyncResultBanner banner = SyncResultBanner.fromSyncSummary(summary);
 
-      expect(
-        banner.stravaSuccess > 0 || banner.stravaFailed > 0,
-        isTrue,
-      );
+      expect(banner.stravaSuccess > 0 || banner.stravaFailed > 0, isTrue);
     });
   });
 }

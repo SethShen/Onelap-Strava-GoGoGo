@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:pointycastle/export.dart';
-import 'package:pointycastle/asymmetric/api.dart';
 import 'settings_service.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:encrypt/encrypt.dart';
@@ -17,15 +16,27 @@ String _sanitizeErrorMsg(String msg) {
       // Remove sessionid=xxx patterns
       .replaceAll(RegExp(r'sessionid=[\w-]+'), 'sessionid=<redacted>')
       // Remove password=xxx patterns (various formats)
-      .replaceAll(RegExp(r'password[=\s]+[\w!@#\$%^&*()]+', caseSensitive: false), 'password=<redacted>')
+      .replaceAll(
+        RegExp(r'password[=\s]+[\w!@#\$%^&*()]+', caseSensitive: false),
+        'password=<redacted>',
+      )
       // Remove authorization=Bearer xxx patterns
-      .replaceAll(RegExp(r'authorization[=\s]+[\w\s-]+', caseSensitive: false), 'authorization=<redacted>')
+      .replaceAll(
+        RegExp(r'authorization[=\s]+[\w\s-]+', caseSensitive: false),
+        'authorization=<redacted>',
+      )
       // Remove Bearer tokens
       .replaceAll(RegExp(r'Bearer\s+[\w-]+'), 'Bearer <redacted>')
       // Remove encrypted_password=xxx patterns
-      .replaceAll(RegExp(r'encrypted_password=[\w-]+'), 'encrypted_password=<redacted>')
+      .replaceAll(
+        RegExp(r'encrypted_password=[\w-]+'),
+        'encrypted_password=<redacted>',
+      )
       // Remove any remaining tokens that look like auth tokens (long alphanumeric strings after keywords)
-      .replaceAll(RegExp(r'(auth|token|key)[=\s]+[\w-]{10,}', caseSensitive: false), '<redacted>');
+      .replaceAll(
+        RegExp(r'(auth|token|key)[=\s]+[\w-]{10,}', caseSensitive: false),
+        '<redacted>',
+      );
 }
 
 class XingzheRetriableError implements Exception {
@@ -53,21 +64,24 @@ class XingzheClient {
     required this.password,
     Dio? dio,
     String? sessionId,
-  }) : _dio = dio ??
-          Dio(
-            BaseOptions(
-              connectTimeout: const Duration(seconds: 30),
-              receiveTimeout: const Duration(seconds: 30),
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-                'Accept-Encoding': 'gzip, deflate',
-                'Origin': 'https://www.imxingzhe.com',
-                'Referer': 'https://www.imxingzhe.com/',
-              },
-            ),
-          ) {
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               connectTimeout: const Duration(seconds: 30),
+               receiveTimeout: const Duration(seconds: 30),
+               headers: {
+                 'User-Agent':
+                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                 'Accept-Encoding': 'gzip, deflate',
+                 'Origin': 'https://www.imxingzhe.com',
+                 'Referer': 'https://www.imxingzhe.com/',
+               },
+             ),
+           ) {
     if (sessionId != null && sessionId.isNotEmpty) {
-      _dio.options.headers['Cookie'] = 'sessionid=$sessionId; _XingzheWeb_Token=true';
+      _dio.options.headers['Cookie'] =
+          'sessionid=$sessionId; _XingzheWeb_Token=true';
     }
   }
 
@@ -79,7 +93,7 @@ class XingzheClient {
     final settingsService = SettingsService();
     final settings = await settingsService.loadSettings();
     final sessionId = settings[SettingsService.keyXingzheSessionId];
-    
+
     return XingzheClient(
       username: username,
       password: password,
@@ -103,10 +117,7 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
 
     // 使用 PKCS1_v1_5 加密模式
     final encryptor = PKCS1Encoding(RSAEngine());
-    encryptor.init(
-      true,
-      PublicKeyParameter<RSAPublicKey>(publicKeyObj),
-    );
+    encryptor.init(true, PublicKeyParameter<RSAPublicKey>(publicKeyObj));
 
     final passwordBytes = utf8.encode(password);
     final encryptedBytes = encryptor.process(passwordBytes);
@@ -118,12 +129,15 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
     required String password,
     Dio? dio,
   }) async {
-    final dioInstance = dio ?? Dio(
+    final dioInstance =
+        dio ??
+        Dio(
           BaseOptions(
             connectTimeout: const Duration(seconds: 30),
             receiveTimeout: const Duration(seconds: 30),
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
               'Accept-Encoding': 'gzip, deflate',
               'Content-Type': 'application/json',
             },
@@ -136,16 +150,13 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
     try {
       response = await dioInstance.post(
         'https://www.imxingzhe.com/api/v1/user/login/',
-        data: {
-          'account': username,
-          'password': encryptedPassword,
-        },
-        options: Options(
-          contentType: 'application/json',
-        ),
+        data: {'account': username, 'password': encryptedPassword},
+        options: Options(contentType: 'application/json'),
       );
     } on DioException catch (e) {
-      throw XingzhePermanentError('行者登录失败: ${e.response?.statusCode ?? 'network error'}');
+      throw XingzhePermanentError(
+        '行者登录失败: ${e.response?.statusCode ?? 'network error'}',
+      );
     }
 
     if (response.statusCode != 200) {
@@ -159,8 +170,9 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
 
     // 从响应头中提取 cookies
     final setCookie = response.headers['set-cookie'];
-    final String extractedSessionId =
-        setCookie != null ? _extractSessionId(setCookie) : '';
+    final String extractedSessionId = setCookie != null
+        ? _extractSessionId(setCookie)
+        : '';
 
     if (extractedSessionId.isNotEmpty) {
       dioInstance.options.headers['Cookie'] =
@@ -208,17 +220,19 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
 
         // 构建 FormData - 参考 requests 库的 files 参数格式
         final formData = FormData();
-        
+
         // 先添加文件内容（这是参考代码中的顺序）
-        formData.files.add(MapEntry(
-          'fit_file',
-          MultipartFile.fromBytes(
-            fileBytes,
-            filename: filename,
-            contentType: MediaType('application', 'octet-stream'),
+        formData.files.add(
+          MapEntry(
+            'fit_file',
+            MultipartFile.fromBytes(
+              fileBytes,
+              filename: filename,
+              contentType: MediaType('application', 'octet-stream'),
+            ),
           ),
-        ));
-        
+        );
+
         // 再添加其他字段
         formData.fields.add(MapEntry('file_source', 'undefined'));
         formData.fields.add(MapEntry('fit_filename', filename));
@@ -260,7 +274,7 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
       } catch (e) {
         rethrow;
       }
-      
+
       try {
         // 检查是否是 500 错误
         if (response.statusCode == 500) {
@@ -270,34 +284,44 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
           }
           throw XingzheRetriableError('xingzhe upload 5xx: 500');
         }
-        
+
         // 检查响应数据是否是有效的 Map
         if (response.data is! Map<String, dynamic>) {
-          throw XingzhePermanentError('xingzhe upload invalid response: ${response.data}');
+          throw XingzhePermanentError(
+            'xingzhe upload invalid response: ${response.data}',
+          );
         }
-        
+
         final payload = response.data as Map<String, dynamic>;
 
         // 9006 = 文件已上传（幂等成功），从 msg 中提取已存在的 activity_id
         if (payload['code'] == 9006) {
           final msg = '${payload['msg'] ?? ''}';
           final match = RegExp(r'(\d{4,})').firstMatch(msg);
-          final existingId = match != null ? int.tryParse(match.group(1)!) ?? 0 : 0;
+          final existingId = match != null
+              ? int.tryParse(match.group(1)!) ?? 0
+              : 0;
           return existingId;
         }
 
         // 检查是否是错误响应（code != 0 或 HTTP 非 200）
         if (payload['code'] != 0 && payload['code'] != null) {
           // 使用 msg 字段（更有意义），fallback 到 code
-          final errorMsg = _sanitizeErrorMsg('${payload['msg'] ?? payload['code']}');
+          final errorMsg = _sanitizeErrorMsg(
+            '${payload['msg'] ?? payload['code']}',
+          );
           throw XingzhePermanentError('xingzhe upload failed: $errorMsg');
         }
-        
+
         // HTTP 非 200 但没有 code 字段，使用 HTTP 状态码
         if (response.statusCode != 200) {
           final status = 'HTTP ${response.statusCode}';
-          final detail = _sanitizeErrorMsg('${payload['msg'] ?? response.data}');
-          throw XingzhePermanentError('xingzhe upload failed: $status detail=$detail');
+          final detail = _sanitizeErrorMsg(
+            '${payload['msg'] ?? response.data}',
+          );
+          throw XingzhePermanentError(
+            'xingzhe upload failed: $status detail=$detail',
+          );
         }
 
         // 行者上传成功后返回 workout_id，即真实活动 ID
@@ -306,7 +330,9 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
         if (workoutIdRaw == null) {
           return 0;
         }
-        final int workoutId = workoutIdRaw is int ? workoutIdRaw : int.tryParse('$workoutIdRaw') ?? 0;
+        final int workoutId = workoutIdRaw is int
+            ? workoutIdRaw
+            : int.tryParse('$workoutIdRaw') ?? 0;
         return workoutId;
       } catch (e) {
         rethrow;
@@ -323,16 +349,15 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
     // pollUpload 在这里只做兜底：如果 uploadId 为 0（之前没拿到 workout_id），
     // 尝试通过 MD5 查一下已上传的活动。
     if (uploadId > 0) {
-      return {
-        'status': 'complete',
-        'activity_id': uploadId,
-      };
+      return {'status': 'complete', 'activity_id': uploadId};
     }
 
     // 兜底查询（uploadId=0 时才走到这里）
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        final resp = await _dio.get('https://www.imxingzhe.com/api/v1/fit/list/');
+        final resp = await _dio.get(
+          'https://www.imxingzhe.com/api/v1/fit/list/',
+        );
         final payload = resp.data as Map<String, dynamic>;
         if (payload['code'] == 0) {
           final List<dynamic> items = payload['data'] as List<dynamic>? ?? [];
@@ -342,7 +367,8 @@ WpJmn7JfXB4HTMWjPVoyRZmSYjW4L8GrWmh51Qj7DwpTADadF3aq04o+s1b8LXJa
             return {'status': 'complete', 'activity_id': id};
           }
         }
-      } catch (e) {
+      } catch (_) {
+        // polling failed, try again
       }
       if (attempt < maxAttempts - 1) {
         await Future.delayed(const Duration(seconds: 2));

@@ -55,7 +55,8 @@ class OneLapClient {
     final payload = response.data as Map<String, dynamic>;
     final code = payload['code'];
     if (code != 0 && code != 200) {
-      final errorMsg = payload['msg'] ?? payload['message'] ?? payload['error'] ?? 'unknown';
+      final errorMsg =
+          payload['msg'] ?? payload['message'] ?? payload['error'] ?? 'unknown';
       throw Exception('OneLap login failed: $errorMsg');
     }
     final List<dynamic> data = payload['data'] as List<dynamic>? ?? <dynamic>[];
@@ -119,7 +120,7 @@ class OneLapClient {
             },
           ),
         );
-      } on DioException catch (e) {
+      } on DioException {
         if (attempt == 0) {
           await login();
           continue;
@@ -171,7 +172,7 @@ class OneLapClient {
             },
           ),
         );
-      } on DioException catch (e) {
+      } on DioException {
         if (attempt == 0) {
           await login();
           continue;
@@ -193,7 +194,9 @@ class OneLapClient {
         if (code != 200) {
           return null;
         }
-        final ridingRecord = (data['data'] as Map<String, dynamic>?)?['ridingRecord'] as Map<String, dynamic>?;
+        final ridingRecord =
+            (data['data'] as Map<String, dynamic>?)?['ridingRecord']
+                as Map<String, dynamic>?;
         if (ridingRecord == null) {
           return null;
         }
@@ -242,7 +245,7 @@ class OneLapClient {
           ts * 1000,
           isUtc: true,
         ).toIso8601String().replaceFirst(RegExp(r'\.\d+'), '');
-        }
+      }
       return createdAt;
     }
     return '';
@@ -260,19 +263,6 @@ class OneLapClient {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
-  }
-
-  (String, String) _buildRecordIdentity(Map<String, dynamic> raw) {
-    final fileKey = '${raw['fileKey'] ?? ''}'.trim();
-    if (fileKey.isNotEmpty) return ('fileKey:$fileKey', fileKey);
-
-    final fitUrl = '${raw['fit_url'] ?? raw['fitUrl'] ?? ''}'.trim();
-    if (fitUrl.isNotEmpty) return ('fitUrl:$fitUrl', fitUrl);
-
-    final durl = '${raw['durl'] ?? ''}'.trim();
-    if (durl.isNotEmpty) return ('durl:$durl', durl);
-
-    return ('', '');
   }
 
   String _normalizeFitFilename(String value) {
@@ -301,8 +291,14 @@ class OneLapClient {
       if (detail != null && detail.fileKey.isNotEmpty) {
         // 使用新的 fit_content 接口下载
         final encodedFileKey = base64.encode(utf8.encode(detail.fileKey));
-        final fitContentUrl = 'http://u.onelap.cn/api/otm/ride_record/analysis/fit_content/$encodedFileKey';
-        return _downloadFromUrl(fitContentUrl, detail.fileKey, outputDir, activityId: activity.activityId);
+        final fitContentUrl =
+            'http://u.onelap.cn/api/otm/ride_record/analysis/fit_content/$encodedFileKey';
+        return _downloadFromUrl(
+          fitContentUrl,
+          detail.fileKey,
+          outputDir,
+          activityId: activity.activityId,
+        );
       }
     }
 
@@ -329,19 +325,19 @@ class OneLapClient {
 
     try {
       await _dio.download(
-        durl, 
+        durl,
         tempPath.path,
         options: Options(
           headers: {
             'Authorization': _token ?? '',
             'Origin': 'http://u.onelap.cn',
-            'Referer': activityId != null 
-                ? 'http://u.onelap.cn/record/details?id=$activityId' 
+            'Referer': activityId != null
+                ? 'http://u.onelap.cn/record/details?id=$activityId'
                 : 'http://u.onelap.cn',
           },
         ),
       );
-    } on DioException catch (e) {
+    } on DioException {
       await tempPath.delete().catchError((_) => tempPath);
       rethrow;
     }

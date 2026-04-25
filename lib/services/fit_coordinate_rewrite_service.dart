@@ -36,16 +36,11 @@ Future<FitSessionMeta> parseFitSessionMeta(File fitFile) async {
       }
     }
 
-    return FitSessionMeta(
-      distanceM: distanceM,
-      ascentM: ascentM,
-      sport: sport,
-    );
+    return FitSessionMeta(distanceM: distanceM, ascentM: ascentM, sport: sport);
   } catch (_) {
     return const FitSessionMeta();
   }
 }
-
 
 typedef CacheDirectoryLoader = Future<Directory> Function();
 
@@ -73,8 +68,7 @@ class FitCoordinateRewriteService {
   /// [options] - optional rewrite parameters (startTime for naming).
   Future<File> rewrite(File inputFile, {RewriteOptions? options}) async {
     final Uint8List bytes = await inputFile.readAsBytes();
-    final filename = inputFile.path;
-    
+
     // 检查文件头前几个字节
     if (bytes.length >= 12) {
       // 轻量检查文件头是否看起来正常
@@ -88,7 +82,7 @@ class FitCoordinateRewriteService {
     final FitFile fitFile;
     try {
       fitFile = FitFile.fromBytes(bytes);
-    } catch (e, stackTrace) {
+    } catch (_) {
       return inputFile;
     }
 

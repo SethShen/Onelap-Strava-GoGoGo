@@ -13,7 +13,7 @@ import 'package:onelap_strava_sync/models/sync_record.dart';
 
 class _FakeOneLapClient extends OneLapClient {
   _FakeOneLapClient({required this.activities, required this.downloadedFile})
-      : super(baseUrl: 'https://example.com', username: 'user', password: 'pass');
+    : super(baseUrl: 'https://example.com', username: 'user', password: 'pass');
 
   final List<OneLapActivity> activities;
   final File downloadedFile;
@@ -39,13 +39,13 @@ class _FakeOneLapClient extends OneLapClient {
 
 class _FakeStravaClient extends StravaClient {
   _FakeStravaClient()
-      : super(
-          clientId: 'client-id',
-          clientSecret: 'client-secret',
-          refreshToken: 'refresh-token',
-          accessToken: 'access-token',
-          expiresAt: 4102444800,
-        );
+    : super(
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        refreshToken: 'refresh-token',
+        accessToken: 'access-token',
+        expiresAt: 4102444800,
+      );
 
   File? uploadedFile;
   int uploadCalls = 0;
@@ -102,7 +102,8 @@ class _FakeStateStore extends StateStore {
   Future<String?> getDedupeKeyFingerprint(String dedupeKey) async => null;
 
   @override
-  Future<bool> isAlreadyUploaded(String fingerprint, String platform) async => false;
+  Future<bool> isAlreadyUploaded(String fingerprint, String platform) async =>
+      false;
 
   @override
   Future<void> markDedupeKey(String dedupeKey, String fingerprint) async {
@@ -111,7 +112,11 @@ class _FakeStateStore extends StateStore {
   }
 
   @override
-  Future<void> markPlatformSynced(String fingerprint, String platform, int? remoteActivityId) async {
+  Future<void> markPlatformSynced(
+    String fingerprint,
+    String platform,
+    int? remoteActivityId,
+  ) async {
     markPlatformSyncedFingerprint = fingerprint;
     markPlatformSyncedPlatform = platform;
     markPlatformSyncedActivityId = remoteActivityId;
@@ -169,16 +174,16 @@ void main() {
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProviderChannel, (
-      MethodCall methodCall,
-    ) async {
-      if (methodCall.method == 'getApplicationCacheDirectory') {
-        return cacheDirectory.path;
-      }
-      if (methodCall.method == 'getApplicationDocumentsDirectory') {
-        return cacheDirectory.path;
-      }
-      return null;
-    });
+          MethodCall methodCall,
+        ) async {
+          if (methodCall.method == 'getApplicationCacheDirectory') {
+            return cacheDirectory.path;
+          }
+          if (methodCall.method == 'getApplicationDocumentsDirectory') {
+            return cacheDirectory.path;
+          }
+          return null;
+        });
   });
 
   tearDownAll(() async {
@@ -223,10 +228,7 @@ void main() {
 
       // 验证 fingerprint 来自原始文件（通过 markPlatformSynced 调用）
       final expectedFp = await _expectedFingerprint(originalFile);
-      expect(
-        stateStore.markPlatformSyncedFingerprint,
-        expectedFp,
-      );
+      expect(stateStore.markPlatformSyncedFingerprint, expectedFp);
     });
 
     test('rewritten file is used for upload when rewrite is enabled', () async {
