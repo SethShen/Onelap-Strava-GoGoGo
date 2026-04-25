@@ -431,7 +431,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await tester.pumpAndSettle();
 
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '7');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '7');
 
     await tapVisibleText(tester, '保存同步设置');
 
@@ -459,11 +459,11 @@ void main() {
     await tester.pumpAndSettle();
 
     await enterVisibleText(tester, 'Strava Client ID', 'new-client-id');
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '0');
 
     await tapVisibleText(tester, '保存');
 
-    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+    expect(find.text('请输入大于 0 的整数'), findsOneWidget);
     expect(find.text('设置已保存'), findsNothing);
 
     final Map<String, String> settings = await settingsService.loadSettings();
@@ -530,7 +530,7 @@ void main() {
     await tester.tap(gcjCorrectionSwitch());
     await tester.pumpAndSettle();
 
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '7');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '7');
     await tapVisibleText(tester, '保存同步设置');
 
     final Map<String, String> settings = await SettingsService().loadSettings();
@@ -772,12 +772,12 @@ void main() {
 
     await enterVisibleText(tester, 'Strava Client ID', '12345');
     await enterVisibleText(tester, 'Strava Client Secret', 'secret-xyz');
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '0');
 
     await tapVisibleText(tester, '授权 Strava');
 
     expect(authorizeCalls, 0);
-    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+    expect(find.text('请输入大于 0 的整数'), findsOneWidget);
     expect(find.text('Strava 授权成功'), findsNothing);
     expect(find.text('授权取消或失败'), findsNothing);
   });
@@ -794,7 +794,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await tester.pumpAndSettle();
 
-    final Finder field = fieldWithLabel('同步最近几天（默认 3）');
+    final Finder field = fieldWithLabel('同步最近几条记录（默认 3，最大 50）');
     await tester.ensureVisible(field);
     await tester.enterText(field, '5');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -818,10 +818,10 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await tester.pumpAndSettle();
 
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '0');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '0');
     await tapVisibleText(tester, '保存同步设置');
 
-    expect(find.text('请输入大于 0 的整数天数'), findsOneWidget);
+    expect(find.text('请输入大于 0 的整数'), findsOneWidget);
 
     final Map<String, String> settings = await SettingsService().loadSettings();
     expect(settings[SettingsService.keyLookbackDays], '3');
@@ -843,7 +843,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await enterVisibleText(tester, '同步最近几天（默认 3）', '6');
+    await enterVisibleText(tester, '同步最近几条记录（默认 3，最大 50）', '6');
     await tapVisibleText(tester, '保存同步设置');
 
     expect(find.text('设置保存失败: Exception: save failed'), findsOneWidget);
@@ -888,7 +888,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await tester.pumpAndSettle();
 
-    final Finder field = fieldWithLabel('同步最近几天（默认 3）');
+    final Finder field = fieldWithLabel('同步最近几条记录（默认 3，最大 50）');
     await tester.tap(field);
     await tester.pump();
     expect(hasFocusedEditableText(tester), isTrue);

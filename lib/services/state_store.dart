@@ -148,15 +148,15 @@ class StateStore {
     final history = (data['history'] as List).cast<Map<String, dynamic>>();
 
     for (final record in records) {
-      // Update existing record if fingerprint already exists (re-upload case)
+      // Remove existing record if fingerprint already exists (re-upload case)
+      // Then insert at front so latest sync shows first
       final existingIdx = history.indexWhere(
         (r) => r['fingerprint'] == record.fingerprint,
       );
       if (existingIdx >= 0) {
-        history[existingIdx] = record.toJson();
-      } else {
-        history.insert(0, record.toJson());
+        history.removeAt(existingIdx);
       }
+      history.insert(0, record.toJson());
     }
 
     // Keep last 500 records
@@ -204,12 +204,8 @@ class StateStore {
 
     final result = merged.values.toList();
 
-    // Sort by activity startTime descending (newest activity first)
-    result.sort((a, b) {
-      final ta = DateTime.tryParse(a.startTime) ?? DateTime(1970);
-      final tb = DateTime.tryParse(b.startTime) ?? DateTime(1970);
-      return tb.compareTo(ta);
-    });
+    // Sort by syncedAt descending (most recently synced first)
+    result.sort((a, b) => b.syncedAt.compareTo(a.syncedAt));
 
     return result.take(limit).toList();
   }

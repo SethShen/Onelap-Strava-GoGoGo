@@ -33,17 +33,18 @@ class SyncEngine {
   }) : xingzheClient = xingzheClient;
 
   Future<SyncSummary> runOnce({
-    DateTime? sinceDate,
     int lookbackDays = 3,
   }) async {
-    final since = sinceDate ?? DateTime.now().subtract(Duration(days: lookbackDays));
     final cacheDir = await getApplicationCacheDirectory();
     final downloadDir = Directory('${cacheDir.path}/fit_downloads');
     if (!downloadDir.existsSync()) downloadDir.createSync(recursive: true);
 
     final List<OneLapActivity> activities;
     try {
-      activities = await oneLapClient.listFitActivities(since: since);
+      activities = await oneLapClient.listFitActivities(
+        since: DateTime.now().subtract(Duration(days: 365)), // 设置一个足够大的时间范围
+        limit: lookbackDays,
+      );
     } on OnelapRiskControlError {
       return const SyncSummary(
         fetched: 0, deduped: 0, success: 0, failed: 0, abortedReason: 'risk-control',
@@ -108,9 +109,10 @@ class SyncEngine {
         continue;
       }
 
-      // ---- 2. 生成 dedupeKey（startTime + distance），检查是否命中 ----
-      final distM = sessionMeta.distanceM;
-      final dedupeKey = '${item.startTime}_${distM != null ? distM.round() : 'na'}';
+      // ---- 2. 生成 dedupeKey（startTime + distance_km + time_seconds），检查是否命中 ----
+      final distKm = item.distanceKm;
+      final timeSec = item.timeSeconds;
+      final dedupeKey = '${item.startTime}_${distKm != null ? distKm.toStringAsFixed(2) : 'na'}_${timeSec ?? 'na'}';
       final alreadyDeduped = await stateStore.isDedupeKey(dedupeKey);
 
       if (alreadyDeduped) {
@@ -140,6 +142,9 @@ class SyncEngine {
               sourceFilename: item.sourceFilename,
               startTime: item.startTime,
               syncedAt: DateTime.now(),
+              distanceM: item.distanceKm != null ? item.distanceKm! * 1000 : null,
+              uploadedToStrava: uploadToStrava,
+              uploadedToXingzhe: uploadToXingzhe,
               platformResults: preSkipped,
             ));
             continue;
@@ -180,6 +185,11 @@ class SyncEngine {
             sourceFilename: item.sourceFilename,
             startTime: item.startTime,
             syncedAt: DateTime.now(),
+            distanceM: sessionMeta.distanceM,
+            ascentM: sessionMeta.ascentM,
+            sport: sessionMeta.sport,
+            uploadedToStrava: uploadToStrava,
+            uploadedToXingzhe: uploadToXingzhe,
             platformResults: preSkipped,
           ));
           continue;
@@ -190,11 +200,18 @@ class SyncEngine {
       File uploadFile = fitFile;
       bool rewriteFailed = false;
       String? rewriteError;
-      if (gcjCorrectionEnabled) {
+      bool needsRewrite = gcjCorrectionEnabled;
+      if (needsRewrite) {
         try {
           final svc = rewriteService ?? FitCoordinateRewriteService();
+          final originalPath = fitFile.path;
           uploadFile = await svc.rewrite(fitFile, options: RewriteOptions(startTime: item.startTime, sourceFilename: item.sourceFilename));
-        } catch (e) {
+          
+          // 检查是否返回了原文件（说明不需要转换）
+          if (uploadFile.path == originalPath) {
+            needsRewrite = false; // 不再需要转换判定
+          }
+        } catch (e, stackTrace) {
           rewriteFailed = true;
           rewriteError = '$e';
         }
@@ -210,7 +227,7 @@ class SyncEngine {
         final skipStrava = await stateStore.isAlreadyUploaded(currentFingerprint!, 'strava');
         if (skipStrava) {
           platformResults.add(PlatformSyncResult(platform: SyncPlatform.strava, status: SyncStatus.deduped, syncedAt: now));
-        } else if (!gcjCorrectionEnabled || !rewriteFailed) {
+        } else if (!needsRewrite || !rewriteFailed) {
           try {
             final uploadId = await stravaClient!.uploadFit(uploadFile);
             final result = await stravaClient!.pollUpload(uploadId);
@@ -263,7 +280,7 @@ class SyncEngine {
         final skipXingzhe = await stateStore.isAlreadyUploaded(currentFingerprint!, 'xingzhe');
         if (skipXingzhe) {
           platformResults.add(PlatformSyncResult(platform: SyncPlatform.xingzhe, status: SyncStatus.deduped, syncedAt: now));
-        } else if (!gcjCorrectionEnabled || !rewriteFailed) {
+        } else if (!needsRewrite || !rewriteFailed) {
           try {
             final uploadId = await xingzheClient!.uploadFit(uploadFile);
             final result = await xingzheClient!.pollUpload(uploadId);
@@ -346,6 +363,15 @@ class SyncEngine {
 
     if (syncRecords.isNotEmpty) {
       await stateStore.saveSyncRecords(syncRecords);
+    }
+
+    // 清理历史下载的 FIT 文件
+    try {
+      if (downloadDir.existsSync()) {
+        await downloadDir.delete(recursive: true);
+      }
+    } catch (e) {
+      // 清理失败不影响同步结果
     }
 
     return SyncSummary(

@@ -34,9 +34,12 @@ void main() {
       await fitFile.writeAsBytes(<int>[1, 2, 3]);
 
       addTearDown(() async {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
+        // Windows: ignore file-lock errors during teardown
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
       });
 
       final Dio dio = Dio();
@@ -80,9 +83,12 @@ void main() {
       await gpxFile.writeAsString('<gpx></gpx>');
 
       addTearDown(() async {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
+        // Windows: ignore file-lock errors during teardown
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
       });
 
       final Dio dio = Dio();
