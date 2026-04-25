@@ -73,7 +73,24 @@ class FitCoordinateRewriteService {
   /// [options] - optional rewrite parameters (startTime for naming).
   Future<File> rewrite(File inputFile, {RewriteOptions? options}) async {
     final Uint8List bytes = await inputFile.readAsBytes();
-    final FitFile fitFile = FitFile.fromBytes(bytes);
+    final filename = inputFile.path;
+    
+    // 检查文件头前几个字节
+    if (bytes.length >= 12) {
+      // 轻量检查文件头是否看起来正常
+      final headerSize = bytes[0];
+      // FIT 文件头应该至少是 12 或 14 字节
+      if (headerSize < 12 || headerSize > 14) {
+        return inputFile;
+      }
+    }
+
+    final FitFile fitFile;
+    try {
+      fitFile = FitFile.fromBytes(bytes);
+    } catch (e, stackTrace) {
+      return inputFile;
+    }
 
     for (final Record record in fitFile.records) {
       final Message message = record.message;

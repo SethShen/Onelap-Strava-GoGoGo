@@ -70,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     SettingsService.keyStravaExpiresAt: 'Strava Expires At (Unix timestamp)',
     SettingsService.keyXingzheUsername: '行者 用户名',
     SettingsService.keyXingzhePassword: '行者 密码',
-    SettingsService.keyLookbackDays: '同步最近几天（默认 3）',
+    SettingsService.keyLookbackDays: '同步最近几条记录（默认 3，最大 50）',
   };
 
   @override
@@ -466,7 +466,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('请输入大于 0 的整数天数')));
+        ).showSnackBar(const SnackBar(content: Text('请输入大于 0 的整数')));
+      }
+      return null;
+    }
+    if (parsedLookbackDays > 50) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('同步记录数不能超过 50')));
       }
       return null;
     }
